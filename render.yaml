@@ -1,42 +1,33 @@
-# render.yaml — Deploy FlipLearn to Render.com (free tier)
-# Docs: https://render.com/docs/blueprint-spec
-#
-# PostgreSQL database is provisioned here so user data persists across deploys.
-# Without this, Render's ephemeral filesystem wipes db.sqlite3 on every redeploy.
-
-databases:
-  - name: fliplearn-db
-    databaseName: fliplearn
-    user: fliplearn
-    plan: free
-
+# Exported from Render on 2026-05-07T09:10:23Z
+version: "1"
 services:
-  - type: web
-    name: fliplearn
-    runtime: python
-    plan: free
-    rootDir: flipped_classroom_project
-    buildCommand: |
-      pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu --no-cache-dir &&
-      pip install -r requirements.txt --no-cache-dir &&
-      python manage.py collectstatic --noinput
-    startCommand: python manage.py migrate --noinput && python manage.py create_admin && gunicorn flipped_classroom_project.wsgi:application --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT
-    envVars:
-      - key: SECRET_KEY
-        generateValue: true
-      - key: DEBUG
-        value: "False"
-      - key: ALLOWED_HOSTS
-        value: ".onrender.com"
-      - key: CSRF_TRUSTED_ORIGINS
-        value: "https://*.onrender.com"
-      - key: GROQ_API_KEY
-        sync: false
-      - key: CLOUDINARY_URL
-        sync: false
-      - key: PYTHON_VERSION
-        value: "3.11.0"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: fliplearn-db
-          property: connectionString
+- type: web
+  name: fliplearn
+  runtime: python
+  repo: https://github.com/Uttama786/classroom
+  plan: free
+  envVars:
+  - key: GROQ_API_KEY
+    sync: false
+  - key: DATABASE_URL
+    sync: false
+  - key: PYTHON_VERSION
+    sync: false
+  - key: CSRF_TRUSTED_ORIGINS
+    sync: false
+  - key: ALLOWED_HOSTS
+    sync: false
+  - key: DEBUG
+    sync: false
+  - key: SECRET_KEY
+    sync: false
+  region: oregon
+  buildCommand: |
+    pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu --no-cache-dir &&
+    pip install -r requirements.txt --no-cache-dir &&
+    python manage.py collectstatic --noinput
+  startCommand: python manage.py migrate --noinput && python manage.py create_admin
+    && gunicorn flipped_classroom_project.wsgi:application --workers 1 --threads 4
+    --timeout 120 --bind 0.0.0.0:$PORT
+  autoDeployTrigger: commit
+  rootDir: flipped_classroom_project
