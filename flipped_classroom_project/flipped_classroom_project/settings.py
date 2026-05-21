@@ -134,6 +134,13 @@ if _db_url:
         conn_max_age=600,
         ssl_require=not DEBUG,
     )
+    # Add connection retry logic for Render cold starts
+    # When Render deploys, the DB may not be immediately available
+    DATABASES['default']['CONN_MAX_AGE'] = 600
+    DATABASES['default']['OPTIONS'] = {
+        'connect_timeout': 10,
+        'options': '-c statement_timeout=15000'  # 15s statement timeout
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
