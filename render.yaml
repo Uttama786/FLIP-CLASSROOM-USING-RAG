@@ -1,21 +1,12 @@
-# render.yaml — Deploy FlipLearn to Render.com (free tier)
-# Docs: https://render.com/docs/blueprint-spec
-#
-# PostgreSQL database is provisioned here so user data persists across deploys.
-# Without this, Render's ephemeral filesystem wipes db.sqlite3 on every redeploy.
-
-databases:
-  - name: fliplearn-db
-    databaseName: fliplearn
-    user: fliplearn
-    plan: free
-
+# Exported from Render on 2026-05-07T09:10:23Z
+version: "1"
 services:
   - type: web
     name: fliplearn
     runtime: python
+    repo: https://github.com/Uttama786/classroom
     plan: free
-    rootDir: flipped_classroom_project
+    region: oregon
     buildCommand: |
       pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu --no-cache-dir &&
       pip install -r requirements.txt --no-cache-dir &&
@@ -40,3 +31,5 @@ services:
         fromDatabase:
           name: fliplearn-db
           property: connectionString
+    autoDeployTrigger: commit
+    rootDir: flipped_classroom_project
