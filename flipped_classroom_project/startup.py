@@ -11,8 +11,8 @@ import time
 import subprocess
 from pathlib import Path
 
-# Ensure we're in the right directory
-os.chdir(Path(__file__).parent)
+# Ensure Django settings module is discoverable
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'flipped_classroom_project.settings')
 
 MAX_RETRIES = 30
 RETRY_INTERVAL = 1
@@ -29,7 +29,6 @@ def wait_for_database():
             from django.db import connections
             
             # Configure Django
-            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'flipped_classroom_project.settings')
             django.setup()
             
             # Try to get a database connection
@@ -42,7 +41,7 @@ def wait_for_database():
             
         except Exception as e:
             attempt_num = attempt + 1
-            print(f"⚠️  Database not ready (attempt {attempt_num}/{MAX_RETRIES}): {type(e).__name__}")
+            print(f"⚠️  Database not ready (attempt {attempt_num}/{MAX_RETRIES}): {type(e).__name__}: {e}")
             
             if attempt_num < MAX_RETRIES:
                 print(f"⏳ Retrying in {RETRY_INTERVAL}s...")
@@ -65,6 +64,10 @@ def run_command(cmd, description):
 
 
 if __name__ == '__main__':
+    print("=" * 60)
+    print("🚀 FlipLearn Startup Script")
+    print("=" * 60)
+    
     # Wait for database
     if not wait_for_database():
         print("❌ Failed to connect to database. Exiting.")
@@ -79,6 +82,8 @@ if __name__ == '__main__':
     # Start Gunicorn
     print("\n✨ Starting Gunicorn...")
     port = os.environ.get('PORT', '8000')
+    print(f"📍 Listening on 0.0.0.0:{port}")
+    print("=" * 60)
     os.execvp('gunicorn', [
         'gunicorn',
         'flipped_classroom_project.wsgi:application',
