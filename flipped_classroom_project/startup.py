@@ -9,53 +9,93 @@ import os
 import sys
 import time
 import subprocess
-from pathlib import Path
+import psycopg2
+from urllib.parse import urlparse
 
 # Ensure Django settings module is discoverable
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'flipped_classroom_project.settings')
 
 MAX_RETRIES = 30
-RETRY_INTERVAL = 1
+RETRY_INTERVAL = 2  # Increased from 1 to 2 seconds
 
 
-def wait_for_database():
-    """Wait for PostgreSQL to be available."""
+def parse_database_url(db_url):
+    """Parse DATABASE_URL into psycopg2 connection parameters."""
+    if not db_url:
+        return None
+    
+    # Handle postgresql:// and postgres:// schemes
+    if db_url.startswith('postgres://'):
+        db_url = db_url.replace('postgres://', 'postgresql://', 1)
+    
+    parsed = urlparse(db_url)
+    
+    return {
+        'host': parsed.hostname,
+        'port': parsed.port or 5432,
+        'database': parsed.path.lstrip('/'),
+        'user': parsed.username,
+        'password': parsed.password,
+    }
+
+
+def wait_for_database_raw():
+    """
+    Wait for PostgreSQL using raw psycopg2 connection.
+    This is more reliable than Django's connection pool.
+    """
     print("🔄 Waiting for PostgreSQL to be available...")
+    
+    db_url = os.environ.get('DATABASE_URL')
+    if not db_url:
+        print("⚠️  DATABASE_URL not set, will use SQLite")
+        return True
+    
+    db_params = parse_database_url(db_url)
+    if not db_params:
+        print("⚠️  Could not parse DATABASE_URL, will attempt connection")
+        return True
+    
+    print(f"📍 Connecting to {db_params['host']}:{db_params['port']}/{db_params['database']}")
     
     for attempt in range(MAX_RETRIES):
         try:
-            import django
-            from django.conf import settings
-            from django.db import connections
-            
-            # Configure Django
-            django.setup()
-            
-            # Try to get a database connection
-            conn = connections['default']
-            with conn.cursor() as cursor:
-                cursor.execute('SELECT 1')
-            
-            print("✅ Database is ready!")
+            conn = psycopg2.connect(
+                host=db_params['host'],
+                port=db_params['port'],
+                database=db_params['database'],
+                user=db_params['user'],
+                password=db_params['password'],
+                connect_timeout=5
+            )
+            conn.close()
+            print("✅ Database connection successful!")
             return True
             
-        except Exception as e:
+        except psycopg2.OperationalError as e:
             attempt_num = attempt + 1
-            print(f"⚠️  Database not ready (attempt {attempt_num}/{MAX_RETRIES}): {type(e).__name__}: {e}")
+            error_msg = str(e).split('\n')[0]  # Get first line of error
+            print(f"⚠️  Attempt {attempt_num}/{MAX_RETRIES}: {error_msg}")
             
             if attempt_num < MAX_RETRIES:
                 print(f"⏳ Retrying in {RETRY_INTERVAL}s...")
                 time.sleep(RETRY_INTERVAL)
-            else:
-                print(f"❌ Database connection failed after {MAX_RETRIES} attempts.")
-                return False
+        except Exception as e:
+            attempt_num = attempt + 1
+            print(f"⚠️  Attempt {attempt_num}/{MAX_RETRIES}: {type(e).__name__}: {e}")
+            
+            if attempt_num < MAX_RETRIES:
+                print(f"⏳ Retrying in {RETRY_INTERVAL}s...")
+                time.sleep(RETRY_INTERVAL)
     
+    print(f"❌ Failed to connect to database after {MAX_RETRIES} attempts.")
     return False
 
 
 def run_command(cmd, description):
     """Run a shell command and exit if it fails."""
     print(f"\n🚀 {description}...")
+    print(f"   Command: {cmd}")
     result = subprocess.run(cmd, shell=True)
     if result.returncode != 0:
         print(f"❌ {description} failed with exit code {result.returncode}")
@@ -64,14 +104,18 @@ def run_command(cmd, description):
 
 
 if __name__ == '__main__':
-    print("=" * 60)
+    print("=" * 70)
     print("🚀 FlipLearn Startup Script")
-    print("=" * 60)
+    print("=" * 70)
     
-    # Wait for database
-    if not wait_for_database():
-        print("❌ Failed to connect to database. Exiting.")
+    # Wait for database (raw connection test)
+    if not wait_for_database_raw():
+        print("❌ Database unavailable. Exiting.")
         sys.exit(1)
+    
+    print("\n" + "=" * 70)
+    print("✅ Database is ready. Starting Django initialization...")
+    print("=" * 70)
     
     # Run migrations
     run_command('python manage.py migrate --noinput', 'Running migrations')
@@ -80,10 +124,11 @@ if __name__ == '__main__':
     run_command('python manage.py create_admin', 'Creating admin user')
     
     # Start Gunicorn
-    print("\n✨ Starting Gunicorn...")
+    print("\n" + "=" * 70)
+    print("✨ Starting Gunicorn...")
     port = os.environ.get('PORT', '8000')
     print(f"📍 Listening on 0.0.0.0:{port}")
-    print("=" * 60)
+    print("=" * 70 + "\n")
     os.execvp('gunicorn', [
         'gunicorn',
         'flipped_classroom_project.wsgi:application',
