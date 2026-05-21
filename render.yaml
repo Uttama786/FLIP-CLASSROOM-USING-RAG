@@ -11,7 +11,7 @@ services:
       pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu --no-cache-dir &&
       pip install -r requirements.txt --no-cache-dir &&
       python manage.py collectstatic --noinput
-    startCommand: python manage.py migrate_with_retry --max-retries 30 && python manage.py create_admin && gunicorn flipped_classroom_project.wsgi:application --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT
+    startCommand: python startup.py
     envVars:
       - key: SECRET_KEY
         generateValue: true
