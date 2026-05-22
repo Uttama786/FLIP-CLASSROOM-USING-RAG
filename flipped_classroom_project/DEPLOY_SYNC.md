@@ -52,13 +52,13 @@ python manage.py push_media_to_cloudinary --dry-run
 
 ### Step 3 — Load content on Render
 
-**Automatic (recommended):** Every deploy runs `load_content_fixture` in `startup.py` if the DB has fewer than 50 videos.
+**Automatic (recommended):** Every deploy runs `load_content_fixture` in `startup.py`. If the DB has fewer than 50 videos (e.g. 18), it **automatically clears and reloads** the full fixture.
 
-**Manual** (Render Shell):
+**Manual** (Render Shell) — only if auto-load did not run:
 
 ```bash
 python manage.py load_content_fixture
-# or if partial/broken data:
+# optional: full refresh even when counts look OK
 python manage.py load_content_fixture --force
 ```
 

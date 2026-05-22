@@ -90,15 +90,14 @@ class Command(BaseCommand):
             ))
             return
 
-        if video_count > 0 and not options['force']:
-            self.stdout.write(self.style.WARNING(
-                f'Partial content detected (videos={video_count}, materials={material_count}). '
-                f'Run with --force to replace, or set FLIPLEARN_FORCE_RELOAD_CONTENT=true on Render.'
-            ))
-            return
-
-        if options['force'] and video_count > 0:
-            self.stdout.write('Clearing existing content …')
+        if video_count > 0:
+            if video_count < MIN_VIDEOS_LOADED:
+                self.stdout.write(self.style.WARNING(
+                    f'Partial content detected (videos={video_count}, materials={material_count}) '
+                    f'— replacing with full fixture (131 videos, 60 materials).'
+                ))
+            else:
+                self.stdout.write('Force reload: clearing existing content …')
             _clear_content()
 
         self.stdout.write('Ensuring uploader accounts for fixture …')
