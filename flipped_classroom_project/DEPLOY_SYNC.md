@@ -52,11 +52,17 @@ python manage.py push_media_to_cloudinary --dry-run
 
 ### Step 3 — Load content on Render
 
-In **Render Shell** (or one-off job):
+**Automatic (recommended):** Every deploy runs `load_content_fixture` in `startup.py` if the DB has fewer than 50 videos.
+
+**Manual** (Render Shell):
 
 ```bash
-python manage.py loaddata fixtures/fliplearn_content.json
+python manage.py load_content_fixture
+# or if partial/broken data:
+python manage.py load_content_fixture --force
 ```
+
+Requires uploader users `admin`, `teacher`, `prof_sharma` — the command creates them before `loaddata`.
 
 If you uploaded media in Step 2 against the **local** DB, re-run Step 2 with Render's external `DATABASE_URL` in the shell environment so Cloudinary URLs are stored in production Postgres.
 

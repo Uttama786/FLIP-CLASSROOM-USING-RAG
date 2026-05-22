@@ -122,6 +122,22 @@ if __name__ == '__main__':
     
     # Create admin user
     run_command('python manage.py create_admin', 'Creating admin user')
+
+    # Load videos, notes, quizzes from fixture when production DB is empty
+    force_reload = os.environ.get('FLIPLEARN_FORCE_RELOAD_CONTENT', '').lower() in (
+        '1', 'true', 'yes', 'on',
+    )
+    load_cmd = 'python manage.py load_content_fixture'
+    if force_reload:
+        load_cmd += ' --force'
+    print(f"\n🚀 Loading platform content (videos, materials, quizzes)...")
+    print(f"   Command: {load_cmd}")
+    load_result = subprocess.run(load_cmd, shell=True)
+    if load_result.returncode != 0:
+        print("⚠️  Content fixture load failed — site may show fewer videos/notes.")
+        print("   Fix: Render Shell → python manage.py load_content_fixture --force")
+    else:
+        print("✅ Platform content load completed!")
     
     # Start Gunicorn
     print("\n" + "=" * 70)
