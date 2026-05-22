@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from django.conf import settings
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponseRedirect
 
 
 def uses_cloudinary() -> bool:
@@ -28,7 +28,8 @@ def cloudinary_download_url(file_name: str, download_filename: str | None = None
     if download_filename:
         flags = f'attachment:{download_filename}'
 
-    return cloudinary.utils.cloudinary_url(
+    # cloudinary_url returns (url_string, options_dict) — not a plain string
+    url, _opts = cloudinary.utils.cloudinary_url(
         public_id,
         resource_type=resource_type,
         secure=True,
@@ -36,6 +37,9 @@ def cloudinary_download_url(file_name: str, download_filename: str | None = None
         type='upload',
         flags=flags,
     )
+    if not url or not str(url).startswith(('http://', 'https://')):
+        raise Http404('Could not build Cloudinary download URL')
+    return str(url)
 
 
 def serve_material_file(material, as_attachment: bool = True):
@@ -48,12 +52,11 @@ def serve_material_file(material, as_attachment: bool = True):
     filename = Path(material.file.name).name
 
     if uses_cloudinary():
-        from django.shortcuts import redirect
         url = cloudinary_download_url(
             material.file.name,
             download_filename=filename if as_attachment else None,
         )
-        return redirect(url)
+        return HttpResponseRedirect(url)
 
     storage = material.file.storage
     local_path = Path(settings.MEDIA_ROOT) / material.file.name.replace('\\', '/')
