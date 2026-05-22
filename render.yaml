@@ -30,6 +30,6 @@ services:
       - key: DATABASE_URL
         fromDatabase:
           name: fliplearn-db
-          property: connectionString
+          property: externalConnectionString
     autoDeployTrigger: commit
     rootDir: flipped_classroom_project

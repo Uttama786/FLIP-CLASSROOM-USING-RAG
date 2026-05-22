@@ -139,7 +139,8 @@ if _db_url:
     DATABASES['default']['CONN_MAX_AGE'] = 600
     DATABASES['default']['OPTIONS'] = {
         'connect_timeout': 10,
-        'options': '-c statement_timeout=15000'  # 15s statement timeout
+        'options': '-c statement_timeout=15000',  # 15s statement timeout
+        **({"sslmode": "require"} if not DEBUG else {}),
     }
 
 AUTH_PASSWORD_VALIDATORS = [
