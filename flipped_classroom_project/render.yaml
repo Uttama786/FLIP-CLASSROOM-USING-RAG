@@ -1,18 +1,19 @@
 # render.yaml — Deploy FlipLearn to Render.com (free tier)
 # Docs: https://render.com/docs/blueprint-spec
-# Keep this file aligned with ../render.yaml to avoid deployment drift.
 
 databases:
   - name: fliplearn-db
     databaseName: fliplearn
     user: fliplearn
     plan: free
+    region: oregon
 
 services:
   - type: web
     name: fliplearn
     runtime: python
     plan: free
+    region: oregon
     buildCommand: |
       pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu --no-cache-dir &&
       pip install -r requirements.txt --no-cache-dir &&

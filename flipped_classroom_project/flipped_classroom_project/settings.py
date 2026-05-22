@@ -188,7 +188,9 @@ if _cloudinary_url:
         api_secret=_api_secret,
         secure=True,
     )
-    STORAGES['default'] = {'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage'}
+    STORAGES['default'] = {
+        'BACKEND': 'flipped_classroom_project.media_storage.FlipLearnMediaStorage',
+    }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

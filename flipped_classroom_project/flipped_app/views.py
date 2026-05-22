@@ -400,16 +400,13 @@ def material_list_view(request, subject_id=None):
 
 @login_required
 def download_material_view(request, material_id):
-    """Serve study materials from local MEDIA_ROOT with a stable app URL."""
+    """Serve study materials from configured storage (local disk or Cloudinary)."""
     material = get_object_or_404(StudyMaterial, id=material_id)
     if not material.file or not material.file.name:
         raise Http404("Material file not found")
 
-    filename = Path(material.file.name).name
-    rel_path = Path("materials") / filename
-    local_path = Path(settings.MEDIA_ROOT) / rel_path
-
-    if not local_path.exists():
+    storage = material.file.storage
+    if not storage.exists(material.file.name):
         raise Http404("Material file is unavailable on this server")
 
     # ── Track material download in StudentPerformance ─────────────────────
@@ -426,8 +423,15 @@ def download_material_view(request, material_id):
         except Exception:
             pass  # Never let tracking break the file download
 
+    filename = Path(material.file.name).name
+
+    # Cloudinary / remote storage: redirect to the public URL
+    file_url = material.file.url
+    if file_url.startswith(('http://', 'https://')):
+        return redirect(file_url)
+
     return FileResponse(
-        local_path.open("rb"),
+        storage.open(material.file.name),
         as_attachment=True,
         filename=filename,
     )

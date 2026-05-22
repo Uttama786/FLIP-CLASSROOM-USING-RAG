@@ -1,13 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-from django.core.files.storage import FileSystemStorage
 from django.core.validators import MinValueValidator, MaxValueValidator
-from django.conf import settings
-
-STUDY_MATERIAL_STORAGE = FileSystemStorage(
-    location=settings.MEDIA_ROOT,
-    base_url=settings.MEDIA_URL,
-)
 
 
 class Subject(models.Model):
@@ -100,7 +93,7 @@ class StudyMaterial(models.Model):
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='materials')
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    file = models.FileField(upload_to='materials/', storage=STUDY_MATERIAL_STORAGE)
+    file = models.FileField(upload_to='materials/')
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 

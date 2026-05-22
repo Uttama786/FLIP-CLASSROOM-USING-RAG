@@ -1,2 +1,0 @@
-record_id,usn,student_name,subject_code,subject_name,video_title,video_duration_min,watch_duration_min,completed,completion_pct,watched_at,engagement_label,appended_at
-DB_1_120,USN_1,Uttam Bhise,PY,Python Programming,Python Basics – Variables and Data Types,60.0,0.0,False,0.0,2026-04-02 09:16:05.378958+00:00,Minimal,2026-04-02 14:46:12 IST
