@@ -76,6 +76,18 @@ python manage.py export_content_fixture
 # then loaddata on Render if needed
 ```
 
+## PDF downloads return 400 / 401 on Cloudinary
+
+1. **Cloudinary Dashboard → Settings → Security**
+2. Enable **“Allow delivery of PDF and ZIP files”** (required for PDFs stored as `image`).
+3. On your PC (with `CLOUDINARY_URL` in `.env`):
+
+```powershell
+python manage.py fix_cloudinary_pdfs
+```
+
+This re-uploads PDFs as `raw` so downloads work even without changing security settings.
+
 ## After deploy
 
 - New uploads on Render go to Cloudinary automatically (when `CLOUDINARY_URL` is set).

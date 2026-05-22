@@ -140,9 +140,28 @@ class Command(BaseCommand):
                 return
 
             try:
-                with local.open('rb') as fh:
-                    f.save(rel_name, File(fh), save=False)
-                obj.save(update_fields=[field_name])
+                # PDFs must be resource_type=raw or Cloudinary blocks download (HTTP 401/400)
+                ext = local.suffix.lower()
+                if ext == '.pdf':
+                    import cloudinary.uploader
+                    public_id = rel_name.replace('\\', '/')
+                    if public_id.lower().endswith('.pdf'):
+                        public_id = public_id[:-4]
+                    result = cloudinary.uploader.upload(
+                        str(local),
+                        resource_type='raw',
+                        public_id=public_id,
+                        format='pdf',
+                        overwrite=True,
+                        invalidate=True,
+                    )
+                    new_name = result.get('public_id', public_id) + '.pdf'
+                    getattr(obj, field_name).name = new_name
+                    obj.save(update_fields=[field_name])
+                else:
+                    with local.open('rb') as fh:
+                        f.save(rel_name, File(fh), save=False)
+                    obj.save(update_fields=[field_name])
                 self.stdout.write(
                     self.style.SUCCESS(f'  [ok]   {label}: {rel_name} ({_human_size(size)})')
                 )
