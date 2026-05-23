@@ -1389,8 +1389,10 @@ def chat_pdf_view(request):
         try:
             api_key = getattr(_settings, 'GROQ_API_KEY', '')
             client = Groq(api_key=api_key)
+            import os
+            model_name = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
             stream = client.chat.completions.create(
-                model='llama-3.1-8b-instant',
+                model=model_name,
                 messages=messages,
                 max_tokens=1200,
                 temperature=0.3,

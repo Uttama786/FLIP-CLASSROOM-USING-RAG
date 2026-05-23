@@ -13,7 +13,7 @@ import urllib.parse
 from typing import List, Optional, Generator
 from .retriever import get_context
 
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 MAX_CONTEXT_CHARS = 4000   # increased for better answer quality
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,14 @@ SYSTEM_PROMPT = """You are FlipLearn AI, an expert academic tutor AND platform g
 You have TWO roles:
 1. **Academic Tutor** — assist with subject topics: Data Structures (DS), Python (PY), Web Development (WD), Computer Networks (CN), Data Science (DSC), and AI & Machine Learning (AIML).
 2. **Platform Guide** — help users understand and navigate the FlipLearn platform. Answer questions like "How do I upload a video?", "How do I submit an assignment?", "How do I take a quiz?", "What features does this platform have?", "How do I enroll in a subject?", etc.
+
+**STRICT TRUTHFULNESS & GROUNDING REQUIREMENT:**
+- You must answer the student's question **ONLY** using the provided context from the FlipLearn knowledge base.
+- Under **NO** circumstances should you generate false, unverified, or hallucinated answers.
+- If the provided context is empty ("No specific context found."), or if it does not contain the information required to accurately answer the question, or if the question is unrelated to the platform/subjects, you **MUST** reply with exactly this phrase:
+  `Your matched query is not found in our database.`
+- Do **NOT** try to be polite, explain why you cannot answer, or suggest search queries if the information is missing. Respond with *only* that exact string.
+
 
 **Multi-Language Programming Support:**
 You can explain concepts and write working code examples in ANY programming language the student requests, including:
@@ -335,6 +343,26 @@ def stream_answer(
 
     # FAISS retrieval runs in main thread while background threads work
     chunks = get_context(user_query, top_k=top_k, subject_filter=subject_code)
+
+    # ── Deterministic Out-of-Domain / Low-Similarity Filter ──
+    MIN_SIMILARITY_THRESHOLD = 0.38
+    is_found = False
+    if chunks:
+        max_score = max(c.get("score", 0.0) for c in chunks)
+        if max_score >= MIN_SIMILARITY_THRESHOLD:
+            is_found = True
+
+    # Intercept simple short greetings or noise
+    clean_query = re.sub(r'[^\w\s]', '', user_query.strip().lower())
+    if clean_query in {"hii", "hi", "hello", "hey", "hola", "yo", "test"}:
+        is_found = False
+
+    if not is_found:
+        yield sse({"type": "sources", "sources": []})
+        yield sse({"type": "token", "text": "Your matched query is not found in our database."})
+        yield sse({"type": "done", "full_reply": "Your matched query is not found in our database.", "sources": []})
+        return
+
     if web_search_enabled and wiki_thread and web_thread:
         wiki_thread.join(timeout=4)
         web_thread.join(timeout=6)   # web search needs a bit more time
@@ -414,7 +442,7 @@ def stream_answer(
             resp = client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=rel_messages,
-                max_tokens=150,
+                max_tokens=60,
                 temperature=0.6,
             )
             text = resp.choices[0].message.content.strip()
@@ -426,7 +454,7 @@ def stream_answer(
 
     t = threading.Thread(target=_fetch_related, daemon=True)
     t.start()
-    t.join(timeout=4)   # wait at most 4 s; skip if Groq is slow
+    t.join(timeout=0.5)   # wait at most 0.5 s; skip if Groq is slow
 
     if related_result:
         yield sse({"type": "related", "questions": related_result})
@@ -441,6 +469,26 @@ def ask(
 ) -> dict:
     """Non-streaming fallback — returns full reply at once."""
     chunks = get_context(user_query, top_k=top_k, subject_filter=subject_code)
+
+    # ── Deterministic Out-of-Domain / Low-Similarity Filter ──
+    MIN_SIMILARITY_THRESHOLD = 0.38
+    is_found = False
+    if chunks:
+        max_score = max(c.get("score", 0.0) for c in chunks)
+        if max_score >= MIN_SIMILARITY_THRESHOLD:
+            is_found = True
+
+    clean_query = re.sub(r'[^\w\s]', '', user_query.strip().lower())
+    if clean_query in {"hii", "hi", "hello", "hey", "hola", "yo", "test"}:
+        is_found = False
+
+    if not is_found:
+        return {
+            "reply": "Your matched query is not found in our database.",
+            "sources": [],
+            "error": None
+        }
+
     sources = list({c.get("source", "") for c in chunks if c.get("source")})
     messages = build_prompt_messages(user_query, chunks, chat_history, lang_pref=lang_pref)
 
