@@ -304,3 +304,44 @@ class ChatMessage(models.Model):
 
     def __str__(self):
         return f"[{self.role}] {self.student.username}: {self.content[:60]}"
+
+
+class VideoComment(models.Model):
+    """Student comments on a video lecture."""
+    video   = models.ForeignKey(VideoLecture, on_delete=models.CASCADE, related_name='comments')
+    author  = models.ForeignKey(User, on_delete=models.CASCADE, related_name='video_comments')
+    body    = models.TextField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.author.username} on '{self.video.title}': {self.body[:60]}"
+
+
+class Feedback(models.Model):
+    """General platform feedback submitted by students."""
+    CATEGORY_CHOICES = [
+        ('general',   'General'),
+        ('videos',    'Video Lectures'),
+        ('materials', 'Study Materials'),
+        ('quizzes',   'Quizzes'),
+        ('platform',  'Platform / UI'),
+        ('other',     'Other'),
+    ]
+    author    = models.ForeignKey(User, on_delete=models.CASCADE, related_name='feedbacks')
+    category  = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='general')
+    rating    = models.PositiveSmallIntegerField(
+        default=5,
+        validators=[MinValueValidator(1), MaxValueValidator(5)]
+    )
+    message   = models.TextField(max_length=2000)
+    is_read   = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.author.username} [{self.category}] ★{self.rating}: {self.message[:60]}"

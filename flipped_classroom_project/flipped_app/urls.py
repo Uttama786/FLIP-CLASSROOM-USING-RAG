@@ -62,4 +62,11 @@ urlpatterns = [
     path('chat/history/', views.chat_history_view, name='chat_history'),
     path('chat/stream/', views.chat_stream_view, name='chat_stream'),
     path('chat/pdf/', views.chat_pdf_view, name='chat_pdf'),
+
+    # Feedback
+    path('feedback/', views.feedback_view, name='feedback'),
+
+    # Video Comments
+    path('videos/<int:video_id>/comment/', views.add_video_comment_view, name='add_video_comment'),
+    path('videos/comment/<int:comment_id>/delete/', views.delete_video_comment_view, name='delete_video_comment'),
 ]

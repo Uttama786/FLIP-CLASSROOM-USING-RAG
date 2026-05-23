@@ -19,7 +19,8 @@ import threading
 from .models import (
     Subject, StudentProfile, TeacherProfile, VideoLecture, StudyMaterial,
     Quiz, QuizQuestion, Assignment, AssignmentSubmission, QuizAttempt,
-    VideoWatchHistory, Attendance, StudentPerformance, Notification, ChatMessage
+    VideoWatchHistory, Attendance, StudentPerformance, Notification, ChatMessage,
+    VideoComment, Feedback
 )
 from .forms import (
     StudentRegistrationForm, VideoLectureForm, StudyMaterialForm,
@@ -257,10 +258,10 @@ def dashboard_view(request):
     assignments_submitted = AssignmentSubmission.objects.filter(student=user).count()
     videos_watched  = VideoWatchHistory.objects.filter(student=user, completed=True).count()
     notifications   = Notification.objects.filter(recipient=user, is_read=False)
-    performance_records = StudentPerformance.objects.filter(student=user)
+    performance_records = StudentPerformance.objects.filter(student=user, subject__in=subjects)
     recent_quiz_attempts = QuizAttempt.objects.filter(student=user).order_by('-attempted_at')[:5]
     recent_submissions   = AssignmentSubmission.objects.filter(student=user).order_by('-submitted_at')[:5]
-    available_quizzes    = Quiz.objects.filter(is_active=True).exclude(
+    available_quizzes    = Quiz.objects.filter(is_active=True, subject__in=subjects).exclude(
         attempts__student=user
     )[:4]
 
@@ -312,19 +313,33 @@ def enroll_subject_view(request, subject_id):
 # ─────────────────────────────────────────────
 @login_required
 def video_list_view(request, subject_id=None):
+    # Determine the set of subjects visible to the current user.
+    # Students only see videos from their enrolled subjects;
+    # teachers / admins see everything.
+    if is_student(request.user):
+        try:
+            enrolled_subjects = request.user.student_profile.enrolled_subjects.all()
+        except Exception:
+            enrolled_subjects = Subject.objects.none()
+    else:
+        enrolled_subjects = Subject.objects.all()
+
     if subject_id:
         subject = get_object_or_404(Subject, id=subject_id)
         videos = VideoLecture.objects.filter(subject=subject, is_active=True)
     else:
-        videos = VideoLecture.objects.filter(is_active=True).order_by('subject')
+        # Only show videos from the allowed subjects (enrolled for students, all for teachers/admins)
+        videos = VideoLecture.objects.filter(
+            subject__in=enrolled_subjects, is_active=True
+        ).order_by('subject')
         subject = None
-    subjects = Subject.objects.all()
+
     watched_ids = VideoWatchHistory.objects.filter(
         student=request.user, completed=True
     ).values_list('video_id', flat=True)
     return render(request, 'videos.html', {
         'videos': videos,
-        'subjects': subjects,
+        'subjects': enrolled_subjects,   # tabs only show enrolled subjects for students
         'subject': subject,
         'watched_ids': list(watched_ids),
     })
@@ -339,7 +354,8 @@ def video_detail_view(request, video_id):
         student=request.user, video=video,
         defaults={'watch_duration_minutes': 0, 'completed': False}
     )
-    return render(request, 'video_detail.html', {'video': video, 'history': history})
+    comments = video.comments.select_related('author').all()
+    return render(request, 'video_detail.html', {'video': video, 'history': history, 'comments': comments})
 
 
 @login_required
@@ -384,16 +400,28 @@ def upload_video_view(request):
 # ─────────────────────────────────────────────
 @login_required
 def material_list_view(request, subject_id=None):
+    # Students only see materials from their enrolled subjects;
+    # teachers / admins see everything.
+    if is_student(request.user):
+        try:
+            enrolled_subjects = request.user.student_profile.enrolled_subjects.all()
+        except Exception:
+            enrolled_subjects = Subject.objects.none()
+    else:
+        enrolled_subjects = Subject.objects.all()
+
     if subject_id:
         subject = get_object_or_404(Subject, id=subject_id)
         materials = StudyMaterial.objects.filter(subject=subject)
     else:
-        materials = StudyMaterial.objects.all().order_by('subject')
+        materials = StudyMaterial.objects.filter(
+            subject__in=enrolled_subjects
+        ).order_by('subject')
         subject = None
-    subjects = Subject.objects.all()
+
     return render(request, 'materials.html', {
         'materials': materials,
-        'subjects': subjects,
+        'subjects': enrolled_subjects,   # tabs only show enrolled subjects for students
         'subject': subject,
     })
 
@@ -445,14 +473,20 @@ def upload_material_view(request):
 def quiz_list_view(request):
     if is_teacher(request.user):
         quizzes = Quiz.objects.all().order_by('-created_at')
+        subjects = Subject.objects.all()
     else:
+        # Only show quizzes from the student's enrolled subjects
+        try:
+            enrolled = request.user.student_profile.enrolled_subjects.all()
+        except Exception:
+            enrolled = Subject.objects.none()
         attempted_ids = set(QuizAttempt.objects.filter(
             student=request.user
         ).values_list('quiz_id', flat=True))
-        quizzes = Quiz.objects.filter(is_active=True).order_by('-created_at')
+        quizzes = Quiz.objects.filter(is_active=True, subject__in=enrolled).order_by('-created_at')
         for q in quizzes:
             q.attempted = q.id in attempted_ids
-    subjects = Subject.objects.all()
+        subjects = enrolled
     return render(request, 'quizzes.html', {'quizzes': quizzes, 'subjects': subjects})
 
 
@@ -559,7 +593,12 @@ def assignment_list_view(request):
             'is_teacher': True,
         })
     else:
-        assignments = Assignment.objects.all().order_by('due_date')
+        # Only show assignments from the student's enrolled subjects
+        try:
+            enrolled = request.user.student_profile.enrolled_subjects.all()
+        except Exception:
+            enrolled = Subject.objects.none()
+        assignments = Assignment.objects.filter(subject__in=enrolled).order_by('due_date')
         submitted_ids = set(AssignmentSubmission.objects.filter(
             student=request.user
         ).values_list('assignment_id', flat=True))
@@ -827,12 +866,18 @@ def _get_recommendation(weakest: str) -> str:
 
 @login_required
 def my_performance_view(request):
+    # Only show performance for enrolled subjects
+    try:
+        enrolled = request.user.student_profile.enrolled_subjects.all()
+    except Exception:
+        enrolled = Subject.objects.none()
+
     performance_records = StudentPerformance.objects.filter(
-        student=request.user
+        student=request.user, subject__in=enrolled
     ).select_related('subject')
-    quiz_attempts   = QuizAttempt.objects.filter(student=request.user)
-    watch_history   = VideoWatchHistory.objects.filter(student=request.user, completed=True)
-    submissions     = AssignmentSubmission.objects.filter(student=request.user, is_graded=True)
+    quiz_attempts   = QuizAttempt.objects.filter(student=request.user, quiz__subject__in=enrolled)
+    watch_history   = VideoWatchHistory.objects.filter(student=request.user, completed=True, video__subject__in=enrolled)
+    submissions     = AssignmentSubmission.objects.filter(student=request.user, is_graded=True, assignment__subject__in=enrolled)
 
     # ── Enrich each record with live ML prediction details ─────────────────────
     enriched = []
@@ -1421,3 +1466,75 @@ def rebuild_rag_view(request):
         'message': 'RAG rebuild started in background. It may take several minutes.',
         **payload,
     })
+
+
+# ─────────────────────────────────────────────
+# Feedback
+# ─────────────────────────────────────────────
+@login_required
+def feedback_view(request):
+    """Students submit feedback; teachers/admins view all feedback."""
+    if is_teacher(request.user) or request.user.is_superuser:
+        feedbacks = Feedback.objects.select_related('author').all()
+        # Mark unread as read when teacher views
+        Feedback.objects.filter(is_read=False).update(is_read=True)
+        return render(request, 'feedback.html', {
+            'feedbacks': feedbacks,
+            'is_teacher': True,
+            'unread_count': 0,
+        })
+
+    # Student: show form + own past feedback
+    my_feedbacks = Feedback.objects.filter(author=request.user)
+    if request.method == 'POST':
+        category = request.POST.get('category', 'general')
+        rating   = int(request.POST.get('rating', 5))
+        message  = request.POST.get('message', '').strip()
+        if message:
+            Feedback.objects.create(
+                author=request.user,
+                category=category,
+                rating=max(1, min(5, rating)),
+                message=message,
+            )
+            messages.success(request, 'Thank you! Your feedback has been submitted.')
+            return redirect('feedback')
+        else:
+            messages.error(request, 'Feedback message cannot be empty.')
+    return render(request, 'feedback.html', {
+        'my_feedbacks': my_feedbacks,
+        'is_teacher': False,
+        'categories': Feedback.CATEGORY_CHOICES,
+    })
+
+
+# ─────────────────────────────────────────────
+# Video Comments
+# ─────────────────────────────────────────────
+@login_required
+def add_video_comment_view(request, video_id):
+    """POST: add a comment to a video."""
+    if request.method != 'POST':
+        return redirect('video_detail', video_id=video_id)
+    video = get_object_or_404(VideoLecture, id=video_id)
+    body  = request.POST.get('body', '').strip()
+    if body:
+        VideoComment.objects.create(video=video, author=request.user, body=body)
+        messages.success(request, 'Comment added!')
+    else:
+        messages.error(request, 'Comment cannot be empty.')
+    return redirect('video_detail', video_id=video_id)
+
+
+@login_required
+def delete_video_comment_view(request, comment_id):
+    """POST: delete own comment (or teacher/admin deletes any)."""
+    comment = get_object_or_404(VideoComment, id=comment_id)
+    video_id = comment.video_id
+    if request.user == comment.author or is_teacher(request.user) or request.user.is_superuser:
+        comment.delete()
+        messages.success(request, 'Comment deleted.')
+    else:
+        messages.error(request, 'You can only delete your own comments.')
+    return redirect('video_detail', video_id=video_id)
+

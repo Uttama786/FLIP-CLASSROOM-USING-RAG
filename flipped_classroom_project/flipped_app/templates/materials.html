@@ -64,7 +64,16 @@
   {% empty %}
   <div class="col-12 text-center py-5 text-muted">
     <i class="bi bi-file-earmark fs-1 d-block mb-3 opacity-50"></i>
-    <h5>No study materials yet</h5>
+    {% if request.user.is_staff or request.user.teacher_profile %}
+      <h5>No study materials yet</h5>
+      <a href="{% url 'upload_material' %}" class="btn btn-success mt-2">Upload First Material</a>
+    {% else %}
+      <h5>No study materials available</h5>
+      <p class="small">You are not enrolled in any subjects yet, or your enrolled subjects have no materials.</p>
+      <a href="{% url 'subjects' %}" class="btn btn-success mt-2">
+        <i class="bi bi-book me-1"></i>Browse &amp; Enroll in Subjects
+      </a>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

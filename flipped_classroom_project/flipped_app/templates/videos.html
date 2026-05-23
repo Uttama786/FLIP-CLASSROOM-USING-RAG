@@ -49,9 +49,15 @@
   <div class="col-12">
     <div class="text-center py-5 text-muted">
       <i class="bi bi-camera-video fs-1 d-block mb-3 opacity-50"></i>
-      <h5>No video lectures yet</h5>
       {% if request.user.is_staff or request.user.teacher_profile %}
-      <a href="{% url 'upload_video' %}" class="btn btn-primary mt-2">Upload First Video</a>
+        <h5>No video lectures yet</h5>
+        <a href="{% url 'upload_video' %}" class="btn btn-primary mt-2">Upload First Video</a>
+      {% else %}
+        <h5>No videos available</h5>
+        <p class="small">You are not enrolled in any subjects yet, or the subjects you enrolled in have no videos.</p>
+        <a href="{% url 'subjects' %}" class="btn btn-primary mt-2">
+          <i class="bi bi-book me-1"></i>Browse &amp; Enroll in Subjects
+        </a>
       {% endif %}
     </div>
   </div>
