@@ -1,8 +1,13 @@
 """
-Re-upload PDF study materials to Cloudinary as resource_type=raw so downloads work.
+Re-upload study materials to Cloudinary as resource_type=raw so downloads work.
 
-PDFs uploaded earlier as 'image' are blocked from delivery until you enable
-PDF delivery in Cloudinary Security settings. Uploading as 'raw' fixes downloads.
+PDFs uploaded as 'image' are blocked from delivery (HTTP 401) unless you
+enable PDF delivery in Cloudinary Security settings.  Uploading as 'raw' is
+the reliable fix and works on all Cloudinary plans.
+
+NOTE: The command no longer pre-filters by filename extension because
+Cloudinary strips extensions from public_ids, making .pdf checks unreliable.
+Instead it asks the Cloudinary Admin API for each asset's actual resource_type.
 
   python manage.py fix_cloudinary_pdfs
   python manage.py fix_cloudinary_pdfs --dry-run
@@ -34,11 +39,10 @@ class Command(BaseCommand):
         fixed = skipped = failed = 0
 
         for mat in StudyMaterial.objects.exclude(file='').exclude(file__isnull=True):
-            fname = (mat.file.name or '').lower()
-            if not fname.endswith('.pdf') and 'pdf' not in mat.title.lower():
-                skipped += 1
-                continue
-
+            # ── Ask Cloudinary what resource_type this asset actually is ──────────
+            # Do NOT pre-filter by filename extension: Cloudinary strips .pdf from
+            # public_ids, so the DB stores names like 'media/materials/notes_abc123'
+            # (no .pdf suffix) and the old extension check skipped everything.
             try:
                 info = resolve_cloudinary_resource(mat.file.name)
             except Exception as exc:
@@ -47,9 +51,15 @@ class Command(BaseCommand):
                 continue
 
             if info.get('resource_type') == 'raw':
-                self.stdout.write(f'  [ok]   #{mat.id} already raw')
+                self.stdout.write(f'  [ok]   #{mat.id} already raw — skipping')
                 skipped += 1
                 continue
+
+            # Only re-upload assets that are NOT raw (image/video type blocks PDF delivery)
+            self.stdout.write(
+                f'  [fix]  #{mat.id} {mat.title[:40]} '
+                f'is resource_type={info.get("resource_type")} — will re-upload as raw'
+            )
 
             public_id = info['public_id']
             fmt = info.get('format') or 'pdf'
