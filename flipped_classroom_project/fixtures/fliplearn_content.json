@@ -54,19 +54,9 @@
   "pk": 6,
   "fields": {
     "name": "Artificial Intelligence & Machine Learning",
-    "code": "AI",
-    "description": "",
-    "created_at": "2026-02-25T04:05:40.422Z"
-  }
-},
-{
-  "model": "flipped_app.subject",
-  "pk": 7,
-  "fields": {
-    "name": "Artificial Intelligence & Machine Learning",
     "code": "AIML",
     "description": "ML algorithms, deep learning, and AI applications.",
-    "created_at": "2026-03-04T03:57:33.918Z"
+    "created_at": "2026-02-25T04:05:40.422Z"
   }
 },
 {
