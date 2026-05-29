@@ -1,0 +1,197 @@
+{% extends 'base.html' %}
+{% block title %}Attendance History – FlipLearn{% endblock %}
+
+{% block extra_css %}
+<style>
+.att-hist-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+  color: #fff; padding: 4px 14px; border-radius: 20px;
+  font-size: .78rem; font-weight: 600;
+}
+.pct-bar-wrap { background: #e9ecef; border-radius: 4px; height: 8px; min-width: 80px; }
+.pct-bar { height: 8px; border-radius: 4px; transition: width .4s; }
+[data-theme="dark"] .pct-bar-wrap { background: rgba(255,255,255,.1); }
+
+.summary-card { border-radius: 12px; transition: transform .15s, box-shadow .15s; }
+.summary-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.1); }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <div class="d-flex align-items-center gap-2 mb-1">
+      <span class="att-hist-badge"><i class="bi bi-clock-history"></i> Attendance History</span>
+    </div>
+    <h3 class="fw-bold mb-0">
+      <i class="bi bi-calendar-range text-primary me-2"></i>Attendance Records
+    </h3>
+    <small class="text-muted">{{ total_records }} record{{ total_records|pluralize }} found</small>
+  </div>
+  <a href="{% url 'mark_attendance' %}" class="btn btn-success btn-sm">
+    <i class="bi bi-calendar-check me-1"></i>Mark Attendance
+  </a>
+</div>
+
+<!-- ── Filters ────────────────────────────────────────────────── -->
+<form method="get" class="card shadow-sm border-0 mb-4">
+  <div class="card-body py-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-muted mb-1"><i class="bi bi-book me-1"></i>Subject</label>
+        <select name="subject" class="form-select form-select-sm">
+          <option value="">All Subjects</option>
+          {% for s in subjects %}
+          <option value="{{ s.id }}" {% if selected_subject == s.id|stringformat:"s" %}selected{% endif %}>
+            {{ s.code }} – {{ s.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-muted mb-1"><i class="bi bi-person me-1"></i>Student</label>
+        <select name="student" class="form-select form-select-sm">
+          <option value="">All Students</option>
+          {% for st in all_students %}
+          <option value="{{ st.id }}" {% if selected_student == st.id|stringformat:"s" %}selected{% endif %}>
+            {{ st.get_full_name|default:st.username }}
+            {% if st.student_profile.roll_number %}({{ st.student_profile.roll_number }}){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1"><i class="bi bi-calendar me-1"></i>From</label>
+        <input type="date" name="date_from" class="form-control form-control-sm" value="{{ date_from }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1"><i class="bi bi-calendar me-1"></i>To</label>
+        <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to }}">
+      </div>
+      <div class="col-12 col-md-2 d-flex gap-2 align-items-end">
+        <button type="submit" class="btn btn-primary btn-sm w-100">
+          <i class="bi bi-funnel-fill me-1"></i>Filter
+        </button>
+        <a href="{% url 'attendance_history' %}" class="btn btn-outline-secondary btn-sm w-100" title="Clear">
+          <i class="bi bi-x-lg"></i>
+        </a>
+      </div>
+    </div>
+  </div>
+</form>
+
+<!-- ── Summary cards ─────────────────────────────────────────── -->
+{% if summary %}
+<h5 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill me-2 text-primary"></i>Attendance Summary</h5>
+<div class="row g-3 mb-4">
+  {% for item in summary %}
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card summary-card shadow-sm border-0 h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div>
+            <div class="fw-semibold">{{ item.student.get_full_name|default:item.student.username }}</div>
+            <small class="text-muted">
+              @{{ item.student.username }}
+              {% if item.student.student_profile.roll_number %}
+              &nbsp;·&nbsp; {{ item.student.student_profile.roll_number }}
+              {% endif %}
+            </small>
+          </div>
+          <span class="badge
+            {% if item.pct >= 75 %}bg-success
+            {% elif item.pct >= 50 %}bg-warning text-dark
+            {% else %}bg-danger{% endif %}
+            fs-6">
+            {{ item.pct }}%
+          </span>
+        </div>
+        <div class="small text-muted mb-1">{{ item.subject.name }}</div>
+        <div class="pct-bar-wrap mb-2">
+          <div class="pct-bar
+            {% if item.pct >= 75 %}bg-success
+            {% elif item.pct >= 50 %}bg-warning
+            {% else %}bg-danger{% endif %}"
+            style="width:{{ item.pct }}%">
+          </div>
+        </div>
+        <div class="d-flex gap-3 small">
+          <span class="text-success fw-semibold"><i class="bi bi-check-circle-fill me-1"></i>{{ item.present }} Present</span>
+          <span class="text-danger fw-semibold"><i class="bi bi-x-circle-fill me-1"></i>{{ item.total|add:"-"|add:item.present|default:0 }} Absent</span>
+          <span class="text-muted">/ {{ item.total }} classes</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Raw records table ──────────────────────────────────────── -->
+<div class="card shadow-sm border-0">
+  <div class="card-header border-0 d-flex justify-content-between align-items-center py-3">
+    <h6 class="fw-bold mb-0">
+      <i class="bi bi-table me-2 text-secondary"></i>Detailed Records
+    </h6>
+    <span class="badge bg-secondary rounded-pill">{{ total_records }} record{{ total_records|pluralize }}</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 table-sm">
+        <thead class="table-light">
+          <tr>
+            <th>Date</th>
+            <th>Student</th>
+            <th>Roll No.</th>
+            <th>Subject</th>
+            <th class="text-center">Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in records %}
+          <tr>
+            <td class="small text-nowrap fw-semibold">{{ r.date|date:"d M Y" }}<br><span class="text-muted fw-normal">{{ r.date|date:"D" }}</span></td>
+            <td>
+              <div class="fw-semibold small">{{ r.student.get_full_name|default:r.student.username }}</div>
+              <div class="text-muted" style="font-size:.72rem">@{{ r.student.username }}</div>
+            </td>
+            <td>
+              {% if r.student.student_profile.roll_number %}
+              <span class="badge bg-secondary">{{ r.student.student_profile.roll_number }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td><span class="badge bg-light text-dark border">{{ r.subject.code }}</span></td>
+            <td class="text-center">
+              {% if r.present %}
+              <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>Present</span>
+              {% else %}
+              <span class="badge bg-danger"><i class="bi bi-x-circle-fill me-1"></i>Absent</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{% url 'mark_attendance' %}?subject={{ r.subject.id }}&date={{ r.date|date:'Y-m-d' }}"
+                 class="btn btn-sm btn-outline-secondary py-0 px-2" title="Edit this day">
+                <i class="bi bi-pencil-square"></i>
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="text-center text-muted py-5">
+              <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+              No attendance records found.
+              <a href="{% url 'mark_attendance' %}" class="d-block mt-2 small">Mark attendance now</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -201,9 +201,18 @@
     <a href="{% url 'analytics' %}" class="sidebar-link" data-label="Analytics" data-url="analytics">
       <i class="bi bi-graph-up-arrow"></i><span>Analytics</span>
     </a>
+    <a href="{% url 'student_accounts' %}" class="sidebar-link" data-label="Students" data-url="students">
+      <i class="bi bi-people-fill"></i><span>Students</span>
+    </a>
+    <a href="{% url 'mark_attendance' %}" class="sidebar-link" data-label="Mark Attendance" data-url="attendance/mark">
+      <i class="bi bi-calendar-check-fill"></i><span>Attendance</span>
+    </a>
     {% else %}
     <a href="{% url 'my_performance' %}" class="sidebar-link" data-label="My Performance" data-url="my_performance">
       <i class="bi bi-bar-chart-fill"></i><span>My Performance</span>
+    </a>
+    <a href="{% url 'my_attendance' %}" class="sidebar-link" data-label="My Attendance" data-url="attendance/my">
+      <i class="bi bi-calendar2-check"></i><span>My Attendance</span>
     </a>
     {% endif %}
 

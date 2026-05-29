@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+{% block title %}My Attendance – FlipLearn{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Circular gauge */
+.att-gauge-wrap { position: relative; width: 110px; height: 110px; flex-shrink: 0; }
+.att-gauge-wrap svg { transform: rotate(-90deg); }
+.att-gauge-circle { fill: none; stroke-width: 10; stroke-linecap: round; }
+.att-gauge-bg    { stroke: rgba(0,0,0,.08); }
+[data-theme="dark"] .att-gauge-bg { stroke: rgba(255,255,255,.1); }
+.att-gauge-val {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-size: 1.3rem; font-weight: 800; line-height: 1;
+}
+.att-gauge-sub { font-size: .65rem; color: #6c757d; margin-top: 2px; }
+
+/* Calendar dot strip */
+.att-dot-strip { display: flex; flex-wrap: wrap; gap: 5px; }
+.att-dot {
+  width: 28px; height: 28px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .65rem; font-weight: 700; color: #fff;
+  cursor: default; transition: transform .12s;
+}
+.att-dot:hover { transform: scale(1.15); }
+.att-dot-present { background: #198754; }
+.att-dot-absent  { background: #dc3545; }
+
+.subject-att-card { border-radius: 14px; transition: box-shadow .2s; }
+.subject-att-card:hover { box-shadow: 0 6px 22px rgba(0,0,0,.1) !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h3 class="fw-bold mb-0">
+      <i class="bi bi-calendar2-check text-success me-2"></i>My Attendance
+    </h3>
+    <small class="text-muted">Your class attendance record across enrolled subjects.</small>
+  </div>
+  <a href="{% url 'my_performance' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-bar-chart me-1"></i>My Performance
+  </a>
+</div>
+
+<!-- ── Subject filter ─────────────────────────────────────────── -->
+<form method="get" class="card shadow-sm border-0 mb-4">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-5">
+        <label class="form-label small text-muted mb-1"><i class="bi bi-book me-1"></i>Filter by Subject</label>
+        <select name="subject" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All Enrolled Subjects</option>
+          {% for s in subjects %}
+          <option value="{{ s.id }}" {% if selected_subject == s.id|stringformat:"s" %}selected{% endif %}>
+            {{ s.code }} – {{ s.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <a href="{% url 'my_attendance' %}" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-x-lg me-1"></i>Clear
+        </a>
+      </div>
+    </div>
+  </div>
+</form>
+
+<!-- ── Per-subject cards ──────────────────────────────────────── -->
+{% if att_data %}
+<div class="row g-4">
+  {% for item in att_data %}
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm border-0 subject-att-card h-100">
+
+      <!-- Card header -->
+      <div class="card-header border-0 d-flex align-items-center justify-content-between
+        {% if item.pct >= 75 %}bg-success bg-opacity-10
+        {% elif item.pct >= 50 %}bg-warning bg-opacity-10
+        {% else %}bg-danger bg-opacity-10{% endif %}">
+        <div>
+          <h6 class="mb-0 fw-bold">{{ item.subject.name }}</h6>
+          <small class="text-muted">{{ item.subject.code }}</small>
+        </div>
+        <span class="badge fs-6
+          {% if item.pct >= 75 %}bg-success
+          {% elif item.pct >= 50 %}bg-warning text-dark
+          {% else %}bg-danger{% endif %}">
+          {{ item.pct }}%
+        </span>
+      </div>
+
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-4 mb-3">
+
+          <!-- Gauge -->
+          <div class="att-gauge-wrap">
+            {% with circ=283 %}
+            {% with fill=item.pct|floatformat:0 %}
+            <svg width="110" height="110" viewBox="0 0 110 110">
+              <circle class="att-gauge-circle att-gauge-bg" cx="55" cy="55" r="45"/>
+              <circle
+                class="att-gauge-circle"
+                cx="55" cy="55" r="45"
+                stroke="{% if item.pct >= 75 %}#198754{% elif item.pct >= 50 %}#ffc107{% else %}#dc3545{% endif %}"
+                stroke-dasharray="{{ circ }}"
+                stroke-dashoffset="{% widthratio item.pct 100 circ|floatformat:0 1 %}"
+                style="stroke-dashoffset: calc({{ circ }} - {{ circ }} * {{ item.pct }} / 100)"
+              />
+            </svg>
+            {% endwith %}
+            {% endwith %}
+            <div class="att-gauge-val">
+              <span
+                style="color:{% if item.pct >= 75 %}#198754{% elif item.pct >= 50 %}#ca8a04{% else %}#dc3545{% endif %}">
+                {{ item.pct }}%
+              </span>
+              <span class="att-gauge-sub">Attendance</span>
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <div class="flex-grow-1">
+            <div class="row g-2 text-center">
+              <div class="col-4">
+                <div class="fw-bold fs-4 text-success">{{ item.present }}</div>
+                <div class="small text-muted">Present</div>
+              </div>
+              <div class="col-4">
+                <div class="fw-bold fs-4 text-danger">{{ item.absent }}</div>
+                <div class="small text-muted">Absent</div>
+              </div>
+              <div class="col-4">
+                <div class="fw-bold fs-4">{{ item.total }}</div>
+                <div class="small text-muted">Total</div>
+              </div>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="progress mt-3" style="height:10px; border-radius:6px;">
+              <div class="progress-bar
+                {% if item.pct >= 75 %}bg-success
+                {% elif item.pct >= 50 %}bg-warning
+                {% else %}bg-danger{% endif %}"
+                style="width:{{ item.pct }}%" role="progressbar">
+              </div>
+            </div>
+
+            <!-- Warning if low -->
+            {% if item.pct < 75 %}
+            <div class="alert
+              {% if item.pct < 50 %}alert-danger{% else %}alert-warning{% endif %}
+              border-0 py-2 px-3 mt-2 mb-0 small">
+              <i class="bi bi-exclamation-triangle-fill me-1"></i>
+              {% if item.pct < 50 %}
+                Attendance critically low! You may be barred from exams.
+              {% else %}
+                Below 75% attendance threshold. Attend more classes.
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Date-dot calendar -->
+        {% if item.records %}
+        <h6 class="small fw-semibold text-muted mb-2"><i class="bi bi-calendar3 me-1"></i>Class Log</h6>
+        <div class="att-dot-strip">
+          {% for rec in item.records %}
+          <div class="att-dot {% if rec.present %}att-dot-present{% else %}att-dot-absent{% endif %}"
+               title="{{ rec.date|date:'d M Y' }} – {% if rec.present %}Present{% else %}Absent{% endif %}">
+            {{ rec.date|date:"d" }}
+          </div>
+          {% endfor %}
+        </div>
+        <div class="mt-2 d-flex gap-3 small text-muted">
+          <span><span class="badge bg-success me-1">&nbsp;</span>Present</span>
+          <span><span class="badge bg-danger me-1">&nbsp;</span>Absent</span>
+        </div>
+        {% else %}
+        <div class="text-muted small fst-italic">No attendance records yet for this subject.</div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-calendar-x fs-2 d-block mb-3"></i>
+  <h5>No attendance records found</h5>
+  <p class="small">Attendance has not been recorded for your subjects yet.<br>
+  Check back after your teacher marks attendance.</p>
+  <a href="{% url 'subjects' %}" class="btn btn-outline-primary btn-sm mt-2">
+    <i class="bi bi-book me-1"></i>View My Subjects
+  </a>
+</div>
+{% endif %}
+
+{% endblock %}

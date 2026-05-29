@@ -69,4 +69,12 @@ urlpatterns = [
     # Video Comments
     path('videos/<int:video_id>/comment/', views.add_video_comment_view, name='add_video_comment'),
     path('videos/comment/<int:comment_id>/delete/', views.delete_video_comment_view, name='delete_video_comment'),
+
+    # Student Accounts (Teacher / Admin)
+    path('students/', views.student_accounts_view, name='student_accounts'),
+
+    # Attendance
+    path('attendance/mark/', views.mark_attendance_view, name='mark_attendance'),
+    path('attendance/history/', views.attendance_history_view, name='attendance_history'),
+    path('attendance/my/', views.my_attendance_view, name='my_attendance'),
 ]

@@ -1,0 +1,298 @@
+{% extends 'base.html' %}
+{% block title %}Mark Attendance – FlipLearn{% endblock %}
+
+{% block extra_css %}
+<style>
+.att-header-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, #198754 0%, #0f5132 100%);
+  color: #fff; padding: 4px 14px; border-radius: 20px;
+  font-size: .78rem; font-weight: 600; letter-spacing: .04em;
+}
+
+/* Student row toggle */
+.student-att-row { transition: background .15s, transform .1s; }
+.student-att-row:hover { background: rgba(25,135,84,.05); }
+
+.att-toggle {
+  display: flex; align-items: center; gap: 14px;
+  cursor: pointer; user-select: none;
+}
+.att-toggle input[type="checkbox"] { display: none; }
+.att-switch {
+  width: 54px; height: 28px; border-radius: 14px;
+  background: #dc3545; position: relative;
+  transition: background .25s; flex-shrink: 0;
+  border: 2px solid transparent;
+}
+.att-switch::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; transition: transform .25s;
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+.att-toggle input:checked + .att-switch { background: #198754; }
+.att-toggle input:checked + .att-switch::after { transform: translateX(26px); }
+
+.att-label {
+  font-weight: 600; font-size: .85rem;
+  min-width: 50px; transition: color .2s;
+}
+.att-toggle input:checked ~ .att-label { color: #198754; }
+.att-toggle input:not(:checked) ~ .att-label { color: #dc3545; }
+
+/* Quick-action bar */
+.quick-bar { position: sticky; top: 62px; z-index: 100; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Header ────────────────────────────────────────────────── -->
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <div class="d-flex align-items-center gap-2 mb-1">
+      <span class="att-header-badge"><i class="bi bi-calendar-check-fill"></i> Mark Attendance</span>
+    </div>
+    <h3 class="fw-bold mb-0">
+      <i class="bi bi-calendar2-check text-success me-2"></i>Attendance Register
+    </h3>
+    <small class="text-muted">Select a subject and date, then mark each student present or absent.</small>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{% url 'attendance_history' %}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-clock-history me-1"></i>View History
+    </a>
+  </div>
+</div>
+
+<!-- ── Subject / Date selector ───────────────────────────────── -->
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body py-3">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-12 col-md-5">
+        <label class="form-label fw-semibold mb-1"><i class="bi bi-book me-1 text-primary"></i>Subject</label>
+        <select name="subject" class="form-select" required onchange="this.form.submit()">
+          <option value="">— Select subject —</option>
+          {% for s in subjects %}
+          <option value="{{ s.id }}" {% if selected_subject and selected_subject.id == s.id %}selected{% endif %}>
+            {{ s.code }} – {{ s.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label fw-semibold mb-1"><i class="bi bi-calendar3 me-1 text-primary"></i>Date</label>
+        <input type="date" name="date" class="form-control"
+               value="{{ selected_date|date:'Y-m-d' }}"
+               onchange="this.form.submit()">
+      </div>
+      <div class="col-12 col-md-3">
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-search me-1"></i>Load Students
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if selected_subject and students_list %}
+
+<!-- ── Already-marked banner ─────────────────────────────────── -->
+{% if already_marked %}
+<div class="alert alert-warning shadow-sm mb-3 d-flex align-items-center gap-2">
+  <i class="bi bi-pencil-square fs-5"></i>
+  <div>
+    <strong>Attendance already recorded</strong> for
+    <strong>{{ selected_subject.name }}</strong> on
+    <strong>{{ selected_date|date:"d M Y" }}</strong>.
+    You can update it below — changes will overwrite existing records.
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Quick actions bar ──────────────────────────────────────── -->
+<div class="quick-bar mb-3">
+  <div class="card border-0 shadow-sm">
+    <div class="card-body py-2 d-flex flex-wrap align-items-center gap-3">
+      <span class="fw-semibold small">
+        <i class="bi bi-people-fill text-primary me-1"></i>
+        {{ students_list|length }} student{{ students_list|length|pluralize }}
+        &nbsp;·&nbsp;
+        <span class="text-success" id="presentCount">0</span> present
+        &nbsp;·&nbsp;
+        <span class="text-danger" id="absentCount">{{ students_list|length }}</span> absent
+      </span>
+      <div class="ms-auto d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-success" onclick="markAll(true)">
+          <i class="bi bi-check-all me-1"></i>All Present
+        </button>
+        <button type="button" class="btn btn-sm btn-danger" onclick="markAll(false)">
+          <i class="bi bi-x-circle me-1"></i>All Absent
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Attendance form ────────────────────────────────────────── -->
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="subject" value="{{ selected_subject.id }}">
+  <input type="hidden" name="date" value="{{ selected_date|date:'Y-m-d' }}">
+
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-header border-0 d-flex justify-content-between align-items-center py-3">
+      <h6 class="fw-bold mb-0">
+        <i class="bi bi-person-check me-2 text-success"></i>
+        {{ selected_subject.name }}
+        <span class="text-muted fw-normal small ms-1">— {{ selected_date|date:"l, d M Y" }}</span>
+      </h6>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width:42px">#</th>
+              <th>Student</th>
+              <th>Roll No.</th>
+              <th>Semester</th>
+              <th class="text-center">Attendance</th>
+              <th class="text-center" style="width:110px">Status</th>
+            </tr>
+          </thead>
+          <tbody id="studentTableBody">
+            {% for student in students_list %}
+            {% with sp=student.student_profile %}
+            {% with is_present=existing_records|default_if_none:True %}
+            <tr class="student-att-row" id="row-{{ student.id }}">
+              <td class="text-muted small">{{ forloop.counter }}</td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="sa-avatar"
+                    style="width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem;color:#fff;background:hsl({{ forloop.counter0|add:7 }}0, 60%, 48%)">
+                    {{ student.first_name|first|upper }}{{ student.last_name|first|upper|default:student.username|first|upper }}
+                  </div>
+                  <div>
+                    <div class="fw-semibold small">{{ student.get_full_name|default:student.username }}</div>
+                    <div class="text-muted" style="font-size:.72rem">@{{ student.username }}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                {% if sp %}<span class="badge bg-secondary">{{ sp.roll_number }}</span>{% else %}—{% endif %}
+              </td>
+              <td>
+                {% if sp %}<span class="badge bg-info text-dark">Sem {{ sp.semester }}</span>{% else %}—{% endif %}
+              </td>
+              <td class="text-center">
+                <label class="att-toggle" for="chk-{{ student.id }}">
+                  <input
+                    type="checkbox"
+                    id="chk-{{ student.id }}"
+                    name="present"
+                    value="{{ student.id }}"
+                    class="att-checkbox"
+                    {% if student.id in existing_records %}
+                      {% if existing_records|dictsort:student.id %}{% endif %}
+                      {% if existing_records|default_if_none:False %}{% endif %}
+                    {% endif %}
+                    {% with val=existing_records|default_if_none:'' %}
+                    {% endwith %}
+                    {% comment %}
+                      Use JS to set initial state from data attribute
+                    {% endcomment %}
+                    data-initial="{% if student.id in existing_records %}{% if existing_records|stringformat:'s' %}present{% endif %}{% else %}present{% endif %}"
+                    onchange="updateCounts()"
+                  >
+                  <span class="att-switch"></span>
+                  <span class="att-label present-label">Present</span>
+                </label>
+              </td>
+              <td class="text-center">
+                <span class="badge att-status-badge" id="status-{{ student.id }}"></span>
+              </td>
+            </tr>
+            {% endwith %}
+            {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer border-0 d-flex justify-content-between align-items-center py-3">
+      <span class="text-muted small">
+        <i class="bi bi-info-circle me-1"></i>
+        Saving will also update each student's attendance % in Performance Analytics.
+      </span>
+      <button type="submit" class="btn btn-success px-4">
+        <i class="bi bi-check-lg me-1"></i>Save Attendance
+      </button>
+    </div>
+  </div>
+</form>
+
+{% elif selected_subject and not students_list %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-2"></i>
+  No students are enrolled in <strong>{{ selected_subject.name }}</strong> yet.
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Existing records from Django (student_id → true/false)
+const existingRecords = {
+  {% for student_id, is_present in existing_records.items %}
+  "{{ student_id }}": {{ is_present|yesno:"true,false" }},
+  {% endfor %}
+};
+
+// Initialise checkboxes
+document.querySelectorAll('.att-checkbox').forEach(chk => {
+  const sid = chk.value;
+  // Default: present unless explicitly absent in existing records
+  const hasRecord = sid in existingRecords;
+  chk.checked = hasRecord ? existingRecords[sid] : true;
+  updateStatus(chk);
+});
+updateCounts();
+
+function updateStatus(chk) {
+  const sid = chk.value;
+  const badge = document.getElementById('status-' + sid);
+  const label = chk.closest('.att-toggle').querySelector('.att-label');
+  if (chk.checked) {
+    badge.textContent = '✓ Present';
+    badge.className = 'badge att-status-badge bg-success';
+    label.textContent = 'Present';
+  } else {
+    badge.textContent = '✗ Absent';
+    badge.className = 'badge att-status-badge bg-danger';
+    label.textContent = 'Absent';
+  }
+}
+
+document.querySelectorAll('.att-checkbox').forEach(chk => {
+  chk.addEventListener('change', () => updateStatus(chk));
+});
+
+function updateCounts() {
+  const all     = document.querySelectorAll('.att-checkbox');
+  const present = [...all].filter(c => c.checked).length;
+  document.getElementById('presentCount').textContent = present;
+  document.getElementById('absentCount').textContent  = all.length - present;
+}
+
+function markAll(present) {
+  document.querySelectorAll('.att-checkbox').forEach(chk => {
+    chk.checked = present;
+    updateStatus(chk);
+  });
+  updateCounts();
+}
+</script>
+{% endblock %}

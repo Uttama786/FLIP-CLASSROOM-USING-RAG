@@ -3,7 +3,7 @@ from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.contrib import messages
-from django.db.models import Avg, Count, Sum, FloatField
+from django.db.models import Avg, Count, Sum, FloatField, Q
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse, HttpResponse, StreamingHttpResponse, FileResponse, Http404
 from django.conf import settings
@@ -453,13 +453,35 @@ def download_material_view(request, material_id):
 @login_required
 @user_passes_test(is_teacher)
 def upload_material_view(request):
+    from .file_compressor import compress_if_needed, MAX_UPLOAD_BYTES
+
     if request.method == 'POST':
         form = StudyMaterialForm(request.POST, request.FILES)
         if form.is_valid():
+            uploaded_file = request.FILES.get('file')
+
+            if uploaded_file and uploaded_file.size > MAX_UPLOAD_BYTES:
+                # ── Auto-compress ──────────────────────────────────────────
+                result = compress_if_needed(uploaded_file)
+
+                if result.error in ('still_too_large', 'unsupported_type', 'compression_failed'):
+                    messages.error(request, result.message)
+                    return render(request, 'upload_material.html', {'form': form})
+
+                # Swap the compressed file back into the form data
+                form.instance.file = result.file
+                # Show the teacher what happened
+                messages.info(request, result.message)
+
             mat = form.save(commit=False)
             mat.uploaded_by = request.user
+
+            # If compression replaced the file object, assign it directly
+            if hasattr(form.instance, 'file') and form.instance.file:
+                mat.file = form.instance.file
+
             mat.save()
-            messages.success(request, 'Study material uploaded successfully!')
+            messages.success(request, '✅ Study material uploaded successfully!')
             return redirect('materials')
     else:
         form = StudyMaterialForm()
@@ -1540,3 +1562,275 @@ def delete_video_comment_view(request, comment_id):
         messages.error(request, 'You can only delete your own comments.')
     return redirect('video_detail', video_id=video_id)
 
+
+# ─────────────────────────────────────────────
+# Student Accounts (Teacher / Admin only)
+# ─────────────────────────────────────────────
+@login_required
+@user_passes_test(is_teacher)
+def student_accounts_view(request):
+    """
+    Show all student login details — username, email, roll number,
+    department, semester, enrolled subjects and date joined.
+    Accessible only to teachers and admins.
+    """
+    from django.contrib.auth.models import User as AuthUser
+
+    search_q   = request.GET.get('q', '').strip()
+    subject_id = request.GET.get('subject', '').strip()
+    sem_filter = request.GET.get('semester', '').strip()
+    sort_by    = request.GET.get('sort', 'name')
+
+    # Base queryset – students only
+    students = AuthUser.objects.filter(
+        student_profile__isnull=False
+    ).select_related('student_profile').prefetch_related(
+        'student_profile__enrolled_subjects'
+    )
+
+    # ── Filters ──────────────────────────────────────────────────────
+    if search_q:
+        students = students.filter(
+            Q(username__icontains=search_q) |
+            Q(first_name__icontains=search_q) |
+            Q(last_name__icontains=search_q) |
+            Q(email__icontains=search_q) |
+            Q(student_profile__roll_number__icontains=search_q)
+        )
+    if subject_id:
+        students = students.filter(
+            student_profile__enrolled_subjects__id=subject_id
+        ).distinct()
+    if sem_filter:
+        students = students.filter(
+            student_profile__semester=sem_filter
+        )
+
+    # ── Sorting ───────────────────────────────────────────────────────
+    sort_map = {
+        'name':     'first_name',
+        'username': 'username',
+        'roll':     'student_profile__roll_number',
+        'semester': 'student_profile__semester',
+        'joined':   '-date_joined',
+    }
+    students = students.order_by(sort_map.get(sort_by, 'first_name'))
+
+    subjects   = Subject.objects.all()
+    semesters  = list(range(1, 9))
+
+    return render(request, 'student_accounts.html', {
+        'students':       students,
+        'subjects':       subjects,
+        'semesters':      semesters,
+        'search_q':       search_q,
+        'selected_subject': subject_id,
+        'selected_sem':   sem_filter,
+        'sort_by':        sort_by,
+        'total':          students.count(),
+    })
+
+
+# ─────────────────────────────────────────────
+# Attendance Management
+# ─────────────────────────────────────────────
+
+@login_required
+@user_passes_test(is_teacher)
+def mark_attendance_view(request):
+    """
+    Teacher / Admin: Mark attendance for a subject on a given date.
+    GET  → Show enrolled students for the selected subject/date.
+    POST → Save present/absent for each student and update StudentPerformance.
+    """
+    import datetime
+
+    subjects = Subject.objects.all()
+    selected_subject = None
+    selected_date    = datetime.date.today()
+    students_list    = []
+    existing_records = {}
+    already_marked   = False
+
+    if request.method == 'POST':
+        subject_id   = request.POST.get('subject')
+        date_str     = request.POST.get('date', '')
+        try:
+            att_date = datetime.date.fromisoformat(date_str)
+        except ValueError:
+            att_date = datetime.date.today()
+
+        selected_subject = get_object_or_404(Subject, id=subject_id)
+        enrolled = User.objects.filter(
+            student_profile__enrolled_subjects=selected_subject
+        ).select_related('student_profile')
+
+        # Save attendance
+        present_ids = set(request.POST.getlist('present'))
+        saved_count = 0
+        for student in enrolled:
+            is_present = str(student.id) in present_ids
+            obj, created = Attendance.objects.update_or_create(
+                student=student,
+                subject=selected_subject,
+                date=att_date,
+                defaults={'present': is_present},
+            )
+            saved_count += 1
+
+            # Update StudentPerformance attendance_percentage live
+            try:
+                all_att = Attendance.objects.filter(student=student, subject=selected_subject)
+                present_cnt = all_att.filter(present=True).count()
+                pct = (present_cnt / all_att.count() * 100) if all_att.count() else 0
+                StudentPerformance.objects.filter(student=student, subject=selected_subject).update(
+                    attendance_percentage=round(pct, 2)
+                )
+            except Exception:
+                pass
+
+        messages.success(
+            request,
+            f'✅ Attendance saved for {selected_subject.name} on {att_date.strftime("%d %b %Y")} '
+            f'({saved_count} student{"s" if saved_count != 1 else ""}).'
+        )
+        return redirect(
+            f"{request.path}?subject={subject_id}&date={att_date}"
+        )
+
+    else:
+        # GET — show form (possibly pre-filled)
+        subject_id = request.GET.get('subject', '')
+        date_str   = request.GET.get('date', str(datetime.date.today()))
+        try:
+            selected_date = datetime.date.fromisoformat(date_str)
+        except ValueError:
+            selected_date = datetime.date.today()
+
+        if subject_id:
+            selected_subject = get_object_or_404(Subject, id=subject_id)
+            students_list    = list(User.objects.filter(
+                student_profile__enrolled_subjects=selected_subject
+            ).select_related('student_profile').order_by('first_name', 'last_name'))
+
+            # Load any existing records for this date
+            recs = Attendance.objects.filter(
+                subject=selected_subject, date=selected_date
+            )
+            existing_records = {r.student_id: r.present for r in recs}
+            already_marked   = recs.exists()
+
+    return render(request, 'mark_attendance.html', {
+        'subjects':        subjects,
+        'selected_subject': selected_subject,
+        'selected_date':   selected_date,
+        'students_list':   students_list,
+        'existing_records': existing_records,
+        'already_marked':  already_marked,
+    })
+
+
+@login_required
+@user_passes_test(is_teacher)
+def attendance_history_view(request):
+    """
+    Teacher / Admin: View attendance records — filterable by subject, student, date range.
+    """
+    import datetime
+
+    subjects    = Subject.objects.all()
+    all_students = User.objects.filter(student_profile__isnull=False).order_by('first_name')
+
+    subject_id  = request.GET.get('subject', '')
+    student_id  = request.GET.get('student', '')
+    date_from   = request.GET.get('date_from', '')
+    date_to     = request.GET.get('date_to', '')
+
+    records = Attendance.objects.select_related('student', 'student__student_profile', 'subject').order_by('-date', 'student__first_name')
+
+    if subject_id:
+        records = records.filter(subject_id=subject_id)
+    if student_id:
+        records = records.filter(student_id=student_id)
+    if date_from:
+        try:
+            records = records.filter(date__gte=datetime.date.fromisoformat(date_from))
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            records = records.filter(date__lte=datetime.date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    # Summary per student-subject
+    summary = {}
+    for r in records:
+        key = (r.student_id, r.subject_id)
+        if key not in summary:
+            summary[key] = {'student': r.student, 'subject': r.subject, 'total': 0, 'present': 0}
+        summary[key]['total'] += 1
+        if r.present:
+            summary[key]['present'] += 1
+    for v in summary.values():
+        v['pct'] = round(v['present'] / v['total'] * 100, 1) if v['total'] else 0
+
+    # Date list for calendar view
+    dates = sorted(set(r.date for r in records), reverse=True)
+
+    return render(request, 'attendance_history.html', {
+        'records':          records,
+        'summary':          list(summary.values()),
+        'subjects':         subjects,
+        'all_students':     all_students,
+        'selected_subject': subject_id,
+        'selected_student': student_id,
+        'date_from':        date_from,
+        'date_to':          date_to,
+        'dates':            dates[:30],          # last 30 unique dates
+        'total_records':    records.count(),
+    })
+
+
+@login_required
+def my_attendance_view(request):
+    """Student: view own attendance per subject."""
+    if not is_student(request.user):
+        messages.error(request, 'Only students can view their own attendance.')
+        return redirect('dashboard')
+
+    user = request.user
+    try:
+        profile  = user.student_profile
+        subjects = profile.enrolled_subjects.all()
+    except Exception:
+        subjects = Subject.objects.none()
+
+    subject_id = request.GET.get('subject', '')
+    if subject_id:
+        subjects_qs = Subject.objects.filter(id=subject_id)
+    else:
+        subjects_qs = subjects
+
+    att_data = []
+    for subj in subjects_qs:
+        records = Attendance.objects.filter(
+            student=user, subject=subj
+        ).order_by('-date')
+        total   = records.count()
+        present = records.filter(present=True).count()
+        pct     = round(present / total * 100, 1) if total else 0
+        att_data.append({
+            'subject':  subj,
+            'records':  list(records),
+            'total':    total,
+            'present':  present,
+            'absent':   total - present,
+            'pct':      pct,
+        })
+
+    return render(request, 'my_attendance.html', {
+        'att_data':         att_data,
+        'subjects':         subjects,
+        'selected_subject': subject_id,
+    })

@@ -1,0 +1,370 @@
+{% extends 'base.html' %}
+{% block title %}Student Accounts – FlipLearn{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Page header ─────────────────────────── */
+.sa-header-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+  color: #fff; padding: 4px 14px; border-radius: 20px;
+  font-size: .78rem; font-weight: 600; letter-spacing: .04em;
+}
+
+/* ── Table ───────────────────────────────── */
+.sa-table thead th {
+  background: linear-gradient(135deg, #0d6efd11, #7c3aed11);
+  font-size: .78rem; text-transform: uppercase; letter-spacing: .06em;
+  font-weight: 700; white-space: nowrap;
+}
+.sa-table td { vertical-align: middle; }
+.sa-table tbody tr { transition: background .15s; }
+.sa-table tbody tr:hover { background: rgba(13,110,253,.05); }
+
+/* ── Avatar ──────────────────────────────── */
+.sa-avatar {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: .85rem; color: #fff; flex-shrink: 0;
+}
+
+/* ── Login pill ──────────────────────────── */
+.login-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(13,110,253,.08); border: 1px solid rgba(13,110,253,.2);
+  border-radius: 8px; padding: 4px 10px; font-family: 'Courier New', monospace;
+  font-size: .82rem; color: #0d6efd; font-weight: 600;
+  cursor: pointer; transition: background .15s, border-color .15s;
+  user-select: all;
+}
+.login-pill:hover { background: rgba(13,110,253,.16); border-color: #0d6efd; }
+[data-theme="dark"] .login-pill {
+  background: rgba(96,165,250,.1); border-color: rgba(96,165,250,.3); color: #60a5fa;
+}
+
+/* ── Email pill ──────────────────────────── */
+.email-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: .8rem; color: #6c757d;
+}
+
+/* ── Subject badges ──────────────────────── */
+.subj-badge {
+  display: inline-block; padding: 2px 7px; border-radius: 6px;
+  font-size: .72rem; font-weight: 600; background: rgba(124,58,237,.1);
+  color: #7c3aed; border: 1px solid rgba(124,58,237,.2); margin: 1px;
+}
+[data-theme="dark"] .subj-badge {
+  background: rgba(167,139,250,.12); color: #a78bfa; border-color: rgba(167,139,250,.3);
+}
+
+/* ── Copy toast ──────────────────────────── */
+#copyToast { min-width: 220px; }
+
+/* ── KPI mini-cards ──────────────────────── */
+.sa-kpi { border-radius: 14px; padding: 18px 16px; text-align: center; }
+.sa-kpi .kpi-val { font-size: 2rem; font-weight: 800; line-height: 1; }
+.sa-kpi .kpi-lbl { font-size: .78rem; color: rgba(255,255,255,.85); margin-top: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Page header ─────────────────────────────────────────── -->
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <div class="d-flex align-items-center gap-2 mb-1">
+      <span class="sa-header-badge"><i class="bi bi-people-fill"></i> Student Directory</span>
+    </div>
+    <h3 class="fw-bold mb-0">
+      <i class="bi bi-person-lines-fill text-primary me-2"></i>Student Login Details
+    </h3>
+    <small class="text-muted">
+      Showing <strong>{{ total }}</strong> student account{{ total|pluralize }} &nbsp;·&nbsp; visible to teachers &amp; admins only
+    </small>
+  </div>
+  <a href="{% url 'analytics' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-graph-up me-1"></i>Analytics
+  </a>
+</div>
+
+<!-- ── KPI row ─────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="sa-kpi bg-primary text-white shadow-sm">
+      <i class="bi bi-people-fill d-block mb-2 fs-3"></i>
+      <div class="kpi-val">{{ total }}</div>
+      <div class="kpi-lbl">Total Students</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="sa-kpi text-white shadow-sm" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)">
+      <i class="bi bi-book-fill d-block mb-2 fs-3"></i>
+      <div class="kpi-val">{{ subjects|length }}</div>
+      <div class="kpi-lbl">Subjects</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="sa-kpi bg-success text-white shadow-sm">
+      <i class="bi bi-calendar-check-fill d-block mb-2 fs-3"></i>
+      <div class="kpi-val">8</div>
+      <div class="kpi-lbl">Semesters</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="sa-kpi bg-info text-white shadow-sm">
+      <i class="bi bi-shield-lock-fill d-block mb-2 fs-3"></i>
+      <div class="kpi-val">🔒</div>
+      <div class="kpi-lbl">Restricted View</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Filter bar ────────────────────────────────────────────── -->
+<form method="get" class="card border-0 shadow-sm mb-4">
+  <div class="card-body py-3">
+    <div class="row g-2 align-items-end">
+
+      <!-- Search -->
+      <div class="col-12 col-md-4">
+        <label class="form-label small text-muted mb-1">
+          <i class="bi bi-search me-1"></i>Search
+        </label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input
+            type="text" name="q" class="form-control"
+            placeholder="Name, username, email or roll no…"
+            value="{{ search_q }}"
+          >
+        </div>
+      </div>
+
+      <!-- Subject -->
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1">
+          <i class="bi bi-book me-1"></i>Subject
+        </label>
+        <select name="subject" class="form-select form-select-sm">
+          <option value="">All Subjects</option>
+          {% for s in subjects %}
+          <option value="{{ s.id }}" {% if selected_subject == s.id|stringformat:"s" %}selected{% endif %}>
+            {{ s.code }} – {{ s.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Semester -->
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1">
+          <i class="bi bi-layers me-1"></i>Semester
+        </label>
+        <select name="semester" class="form-select form-select-sm">
+          <option value="">All Semesters</option>
+          {% for sem in semesters %}
+          <option value="{{ sem }}" {% if selected_sem == sem|stringformat:"s" %}selected{% endif %}>
+            Semester {{ sem }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Sort -->
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1">
+          <i class="bi bi-sort-alpha-down me-1"></i>Sort By
+        </label>
+        <select name="sort" class="form-select form-select-sm">
+          <option value="name"     {% if sort_by == 'name'     %}selected{% endif %}>Name (A→Z)</option>
+          <option value="username" {% if sort_by == 'username' %}selected{% endif %}>Username</option>
+          <option value="roll"     {% if sort_by == 'roll'     %}selected{% endif %}>Roll Number</option>
+          <option value="semester" {% if sort_by == 'semester' %}selected{% endif %}>Semester</option>
+          <option value="joined"   {% if sort_by == 'joined'   %}selected{% endif %}>Newest First</option>
+        </select>
+      </div>
+
+      <!-- Buttons -->
+      <div class="col-6 col-md-2 d-flex gap-2 align-items-end">
+        <button type="submit" class="btn btn-primary btn-sm w-100">
+          <i class="bi bi-funnel-fill me-1"></i>Filter
+        </button>
+        <a href="{% url 'student_accounts' %}" class="btn btn-outline-secondary btn-sm w-100" title="Clear">
+          <i class="bi bi-x-lg"></i>
+        </a>
+      </div>
+
+    </div>
+  </div>
+</form>
+
+<!-- ── Student table ─────────────────────────────────────────── -->
+<div class="card shadow-sm border-0">
+  <div class="card-header border-0 d-flex justify-content-between align-items-center py-3">
+    <h6 class="fw-bold mb-0">
+      <i class="bi bi-table me-2 text-primary"></i>Student Accounts
+    </h6>
+    <span class="badge bg-primary rounded-pill">{{ total }} record{{ total|pluralize }}</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 sa-table">
+        <thead>
+          <tr>
+            <th style="width:42px">#</th>
+            <th>Student</th>
+            <th>
+              <i class="bi bi-person-badge me-1"></i>Username
+              <small class="text-muted fw-normal">(Login ID)</small>
+            </th>
+            <th><i class="bi bi-envelope me-1"></i>Email</th>
+            <th>Roll No.</th>
+            <th>Dept</th>
+            <th>Sem</th>
+            <th>Enrolled Subjects</th>
+            <th>Joined</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in students %}
+          {% with sp=s.student_profile %}
+          <tr>
+            <!-- Index -->
+            <td class="text-muted small">{{ forloop.counter }}</td>
+
+            <!-- Name + avatar -->
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <span class="sa-avatar"
+                  style="background: hsl({{ forloop.counter0|add:7 }}0, 60%, 48%)">
+                  {{ s.first_name|first|upper }}{{ s.last_name|first|upper|default:s.username|first|upper }}
+                </span>
+                <div>
+                  <div class="fw-semibold small lh-1">{{ s.get_full_name|default:s.username }}</div>
+                  {% if sp %}
+                  <div class="text-muted" style="font-size:.72rem">{{ sp.department|truncatechars:24 }}</div>
+                  {% endif %}
+                </div>
+              </div>
+            </td>
+
+            <!-- Username / Login ID -->
+            <td>
+              <span
+                class="login-pill"
+                title="Click to copy"
+                onclick="copyText('{{ s.username }}', this)"
+              >
+                <i class="bi bi-person-fill" style="font-size:.8rem"></i>
+                {{ s.username }}
+                <i class="bi bi-clipboard" style="font-size:.72rem; opacity:.6"></i>
+              </span>
+            </td>
+
+            <!-- Email -->
+            <td>
+              <span class="email-pill">
+                <i class="bi bi-envelope-fill" style="font-size:.75rem; color:#0d6efd"></i>
+                <a href="mailto:{{ s.email }}" class="text-reset text-decoration-none small">{{ s.email|default:"—" }}</a>
+              </span>
+            </td>
+
+            <!-- Roll No -->
+            <td>
+              {% if sp %}
+              <span class="badge bg-secondary">{{ sp.roll_number }}</span>
+              {% else %}—{% endif %}
+            </td>
+
+            <!-- Department -->
+            <td class="small text-muted">
+              {% if sp %}{{ sp.department|truncatechars:18 }}{% else %}—{% endif %}
+            </td>
+
+            <!-- Semester -->
+            <td>
+              {% if sp %}
+              <span class="badge bg-info text-dark">Sem {{ sp.semester }}</span>
+              {% else %}—{% endif %}
+            </td>
+
+            <!-- Enrolled Subjects -->
+            <td style="max-width:200px">
+              {% if sp %}
+                {% for subj in sp.enrolled_subjects.all %}
+                <span class="subj-badge">{{ subj.code }}</span>
+                {% empty %}
+                <span class="text-muted small fst-italic">None enrolled</span>
+                {% endfor %}
+              {% else %}—{% endif %}
+            </td>
+
+            <!-- Date Joined -->
+            <td class="small text-muted text-nowrap">{{ s.date_joined|date:"d M Y" }}</td>
+
+            <!-- Actions -->
+            <td>
+              <a href="{% url 'student_analytics' s.id %}"
+                 class="btn btn-sm btn-outline-primary py-0 px-2"
+                 title="View Analytics">
+                <i class="bi bi-eye"></i>
+              </a>
+            </td>
+          </tr>
+          {% endwith %}
+          {% empty %}
+          <tr>
+            <td colspan="10" class="text-center text-muted py-5">
+              <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+              No students found matching your filters.
+              <a href="{% url 'student_accounts' %}" class="d-block mt-2 small">Clear filters</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Copy Toast ─────────────────────────────────────────────── -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1100">
+  <div id="copyToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body d-flex align-items-center gap-2">
+        <i class="bi bi-clipboard-check-fill"></i>
+        <span id="copyToastMsg">Copied to clipboard!</span>
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function copyText(text, el) {
+  navigator.clipboard.writeText(text).then(() => {
+    const toastEl = document.getElementById('copyToast');
+    document.getElementById('copyToastMsg').textContent = `"${text}" copied!`;
+    if (window.bootstrap) {
+      new bootstrap.Toast(toastEl, { delay: 2000 }).show();
+    }
+    // Quick visual feedback on the pill
+    const icon = el.querySelector('.bi-clipboard');
+    if (icon) {
+      icon.className = 'bi bi-clipboard-check-fill text-success';
+      setTimeout(() => { icon.className = 'bi bi-clipboard'; }, 1800);
+    }
+  }).catch(() => {
+    // Fallback: select the text
+    const range = document.createRange();
+    range.selectNode(el);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
+}
+</script>
+{% endblock %}

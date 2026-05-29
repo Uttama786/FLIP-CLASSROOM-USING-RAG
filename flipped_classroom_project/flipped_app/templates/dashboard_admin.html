@@ -303,9 +303,16 @@ document.addEventListener('DOMContentLoaded', function () {
   </div>
 
   <div class="col-6 col-md-2">
-    <a href="{% url 'analytics' %}" class="btn btn-outline-info admin-action-btn w-100">
+    <a href="{% url 'student_accounts' %}" class="btn btn-outline-info admin-action-btn w-100">
       <i class="bi bi-person-lines-fill d-block fs-2 mb-1"></i>
-      <small class="fw-semibold">Student Analytics</small>
+      <small class="fw-semibold">Student Accounts</small>
+    </a>
+  </div>
+
+  <div class="col-6 col-md-2">
+    <a href="{% url 'mark_attendance' %}" class="btn btn-outline-success admin-action-btn w-100">
+      <i class="bi bi-calendar-check-fill d-block fs-2 mb-1"></i>
+      <small class="fw-semibold">Mark Attendance</small>
     </a>
   </div>
 

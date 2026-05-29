@@ -80,7 +80,18 @@ class Command(BaseCommand):
                         local = candidate
                         break
 
-                upload_source = str(local) if local else info['secure_url']
+                if local:
+                    upload_source = str(local)
+                else:
+                    # No local file — use Cloudinary's plain delivery URL (no
+                    # fl_attachment transformation) so Cloudinary can fetch it
+                    # internally without hitting the 401 delivery restriction.
+                    plain_url = info.get('secure_url', '')
+                    # Strip any existing transformation flags from the URL
+                    if '/fl_attachment/' in plain_url:
+                        plain_url = plain_url.replace('/fl_attachment/', '/')
+                    upload_source = plain_url
+
                 result = cloudinary.uploader.upload(
                     upload_source,
                     resource_type='raw',
@@ -94,8 +105,11 @@ class Command(BaseCommand):
                     stored = f'{new_name}.{fmt}'
                 else:
                     stored = new_name
-                mat.file.name = stored.replace('\\', '/')
-                mat.save(update_fields=['file'])
+                stored = stored.replace('\\', '/')
+                # Only update DB if the stored path actually changed
+                if mat.file.name != stored:
+                    mat.file.name = stored
+                    mat.save(update_fields=['file'])
                 self.stdout.write(self.style.SUCCESS(
                     f'  [ok]   #{mat.id} {mat.title[:40]} -> raw/{stored}'
                 ))
