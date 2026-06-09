@@ -86,6 +86,8 @@ def _inject_fl_attachment(url: str) -> str:
     returns the actual file bytes (required for PDFs stored as image type).
     Idempotent — won't double-inject.
     """
+    if '/raw/' in url or '/raw/upload/' in url:
+        return url
     if '/fl_attachment/' in url or '/fl_attachment:' in url:
         return url
     if '/upload/' in url:
