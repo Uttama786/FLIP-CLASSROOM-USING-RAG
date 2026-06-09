@@ -4,16 +4,8 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 
 
 class Subject(models.Model):
-    SUBJECT_CHOICES = [
-        ('DS',   'Data Structures'),
-        ('PY',   'Python Programming'),
-        ('WD',   'Web Development'),
-        ('CN',   'Computer Networks'),
-        ('DSC',  'Data Science'),
-        ('AIML', 'Artificial Intelligence & Machine Learning'),
-    ]
     name = models.CharField(max_length=100)
-    code = models.CharField(max_length=10, choices=SUBJECT_CHOICES, unique=True)
+    code = models.CharField(max_length=20, unique=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

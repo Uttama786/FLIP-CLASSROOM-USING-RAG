@@ -25,7 +25,7 @@ from .models import (
 from .forms import (
     StudentRegistrationForm, VideoLectureForm, StudyMaterialForm,
     QuizForm, QuizQuestionForm, AssignmentForm, AssignmentSubmissionForm,
-    GradeSubmissionForm
+    GradeSubmissionForm, SubjectForm
 )
 
 logger = logging.getLogger(__name__)
@@ -292,7 +292,11 @@ def subject_list_view(request):
     enrolled = []
     if is_student(request.user):
         enrolled = list(request.user.student_profile.enrolled_subjects.values_list('id', flat=True))
-    return render(request, 'subjects.html', {'subjects': subjects, 'enrolled': enrolled})
+    return render(request, 'subjects.html', {
+        'subjects': subjects,
+        'enrolled': enrolled,
+        'is_teacher': is_teacher(request.user),
+    })
 
 
 @login_required
@@ -306,6 +310,37 @@ def enroll_subject_view(request, subject_id):
     else:
         messages.error(request, 'Only students can enrol in subjects.')
     return redirect('subjects')
+
+
+@login_required
+@user_passes_test(is_teacher)
+def add_subject_view(request):
+    """Allow teachers and admins to add a new subject."""
+    if request.method == 'POST':
+        form = SubjectForm(request.POST)
+        if form.is_valid():
+            subject = form.save()
+            messages.success(request, f'Subject "{subject.name}" ({subject.code}) added successfully!')
+            return redirect('subjects')
+        else:
+            messages.error(request, 'Please fix the errors below.')
+    else:
+        form = SubjectForm()
+    return render(request, 'add_subject.html', {'form': form})
+
+
+@login_required
+@user_passes_test(is_teacher)
+def delete_subject_view(request, subject_id):
+    """Allow teachers and admins to delete a subject."""
+    subject = get_object_or_404(Subject, id=subject_id)
+    if request.method == 'POST':
+        subject_name = subject.name
+        subject.delete()
+        messages.success(request, f'Subject "{subject_name}" has been deleted.')
+        return redirect('subjects')
+    # GET: show confirmation page
+    return render(request, 'confirm_delete_subject.html', {'subject': subject})
 
 
 # ─────────────────────────────────────────────

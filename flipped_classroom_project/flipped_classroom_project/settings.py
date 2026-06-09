@@ -122,6 +122,12 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        # ── SQLite concurrency fixes ────────────────────────────────
+        # timeout: wait up to 30 s for a write-lock instead of crashing instantly.
+        # This is the key fix for "database is locked" during concurrent ML writes.
+        'OPTIONS': {
+            'timeout': 30,
+        },
     }
 }
 
@@ -218,8 +224,11 @@ warnings.filterwarnings('ignore', message='.*HF Hub.*')
 
 # ── Session / Auto-Logout Settings ───────────────────────
 # Expire session after 2 hours of inactivity
-SESSION_COOKIE_AGE = 7200          # 2 hours in seconds
-SESSION_SAVE_EVERY_REQUEST = True  # Reset the 2-hr timer on every request
+SESSION_COOKIE_AGE = 7200              # 2 hours in seconds
+# Only write session to DB when it is actually modified (not on every request).
+# SESSION_SAVE_EVERY_REQUEST = True would hammer the SQLite DB on each page load
+# and race with background ML/seeding threads, causing "database is locked" errors.
+SESSION_SAVE_EVERY_REQUEST = False
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True  # Also logout when browser is closed
 
 # ── Logging: real-time dataset events visible in console ─

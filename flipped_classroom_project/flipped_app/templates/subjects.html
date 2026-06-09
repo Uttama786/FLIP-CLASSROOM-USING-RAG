@@ -1,27 +1,117 @@
 {% extends 'base.html' %}
 {% block title %}Subjects – FlipLearn{% endblock %}
+
+{% block extra_css %}
+<style>
+.subject-mgmt-card {
+  border-radius: 16px;
+  transition: transform .18s, box-shadow .18s;
+  border: none;
+  overflow: hidden;
+}
+.subject-mgmt-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.13) !important;
+}
+.subject-code-badge {
+  font-size: .78rem; font-weight: 700; letter-spacing: .06em;
+  padding: 4px 10px; border-radius: 20px;
+}
+.btn-delete-subj {
+  border-radius: 8px; font-size: .78rem; padding: 4px 12px;
+  transition: background .15s;
+}
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: .75rem;
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<h3 class="fw-bold mb-4"><i class="bi bi-book me-2 text-primary"></i>Subjects</h3>
+<div class="section-header mb-4">
+  <div>
+    <h3 class="fw-bold mb-0">
+      <i class="bi bi-book me-2 text-primary"></i>Subjects
+    </h3>
+    <small class="text-muted">
+      {% if is_teacher %}Manage all platform subjects{% else %}Enroll in subjects to access content{% endif %}
+    </small>
+  </div>
+
+  {% if is_teacher %}
+  <a href="{% url 'add_subject' %}" class="btn btn-primary d-flex align-items-center gap-2">
+    <i class="bi bi-plus-circle-fill"></i> Add New Subject
+  </a>
+  {% endif %}
+</div>
+
+{% if subjects %}
 <div class="row g-3">
   {% for subject in subjects %}
-  <div class="col-sm-6 col-md-4">
-    <div class="card shadow-sm border-0 h-100">
-      <div class="card-body">
-        <h5 class="fw-bold">{{ subject.name }}</h5>
-        <p class="text-muted small">{{ subject.description|default:'Core CSE subject' }}</p>
-        {% if subject.id in enrolled %}
-          <span class="badge bg-success">Enrolled</span>
-        {% else %}
-          <form method="post" action="{% url 'enroll' subject.id %}" class="d-inline">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-sm btn-primary">Enroll</button>
-          </form>
-        {% endif %}
+  <div class="col-sm-6 col-md-4 col-xl-3">
+    <div class="card subject-mgmt-card shadow-sm h-100">
+      <div class="card-body d-flex flex-column gap-2 p-4">
+
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <span class="subject-code-badge bg-primary-subtle text-primary">
+            {{ subject.code }}
+          </span>
+          <small class="text-muted" style="font-size:.72rem;">
+            <i class="bi bi-calendar3 me-1"></i>{{ subject.created_at|date:"d M Y" }}
+          </small>
+        </div>
+
+        <h5 class="fw-bold mb-0 lh-sm">{{ subject.name }}</h5>
+        <p class="text-muted small flex-grow-1 mb-2">
+          {{ subject.description|default:'Core CSE subject' }}
+        </p>
+
+        <div class="d-flex align-items-center gap-2 mt-auto">
+          {% if not is_teacher %}
+            {# Student: enroll button #}
+            {% if subject.id in enrolled %}
+              <span class="badge bg-success px-3 py-2">
+                <i class="bi bi-check-circle-fill me-1"></i>Enrolled
+              </span>
+            {% else %}
+              <form method="post" action="{% url 'enroll' subject.id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-primary">
+                  <i class="bi bi-plus-circle me-1"></i>Enroll
+                </button>
+              </form>
+            {% endif %}
+          {% else %}
+            {# Teacher / Admin: show stats + delete button #}
+            <span class="badge bg-info-subtle text-info border border-info-subtle" title="Videos">
+              <i class="bi bi-camera-video me-1"></i>{{ subject.videos.count }}
+            </span>
+            <span class="badge bg-success-subtle text-success border border-success-subtle" title="Enrolled Students">
+              <i class="bi bi-people me-1"></i>{{ subject.studentprofile_set.count }}
+            </span>
+            <a href="{% url 'delete_subject' subject.id %}"
+               class="btn btn-sm btn-outline-danger btn-delete-subj ms-auto"
+               title="Delete subject">
+              <i class="bi bi-trash3 me-1"></i>Delete
+            </a>
+          {% endif %}
+        </div>
+
       </div>
     </div>
   </div>
-  {% empty %}
-  <div class="col-12 text-muted">No subjects available.</div>
   {% endfor %}
 </div>
+{% else %}
+<div class="text-center py-5">
+  <i class="bi bi-book display-4 text-muted"></i>
+  <p class="text-muted mt-3">No subjects available yet.</p>
+  {% if is_teacher %}
+  <a href="{% url 'add_subject' %}" class="btn btn-primary mt-2">
+    <i class="bi bi-plus-circle-fill me-1"></i>Add First Subject
+  </a>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}

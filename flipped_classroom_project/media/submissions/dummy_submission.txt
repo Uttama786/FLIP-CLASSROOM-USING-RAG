@@ -1,0 +1,2 @@
+This is a generic dummy assignment submission.
+All seeded dummy submissions point to this file to optimize performance.

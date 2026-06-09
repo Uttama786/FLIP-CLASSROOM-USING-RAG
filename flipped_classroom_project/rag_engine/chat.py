@@ -374,7 +374,8 @@ def stream_answer(
         s = c.get("source", "")
         if s and s not in seen:
             seen.add(s)
-            sources.append({"title": s, "subject": c.get("subject", ""), "source_type": "knowledge"})
+            snippet = c.get("text", "")[:220].strip()
+            sources.append({"title": s, "subject": c.get("subject", ""), "source_type": "knowledge", "snippet": snippet})
 
     for w in wiki_results:
         sources.append(w)

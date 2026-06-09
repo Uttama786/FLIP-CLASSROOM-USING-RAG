@@ -345,6 +345,20 @@ document.addEventListener('DOMContentLoaded', function () {
   </div>
 
   <div class="col-6 col-md-2">
+    <a href="{% url 'subjects' %}" class="btn btn-outline-info admin-action-btn w-100">
+      <i class="bi bi-book-fill d-block fs-2 mb-1"></i>
+      <small class="fw-semibold">Manage Subjects</small>
+    </a>
+  </div>
+
+  <div class="col-6 col-md-2">
+    <a href="{% url 'add_subject' %}" class="btn btn-outline-primary admin-action-btn w-100">
+      <i class="bi bi-journal-plus d-block fs-2 mb-1"></i>
+      <small class="fw-semibold">Add Subject</small>
+    </a>
+  </div>
+
+  <div class="col-6 col-md-2">
     <button id="trainRagBtn" type="button" class="btn btn-outline-secondary admin-action-btn w-100" title="Keyboard shortcut: Ctrl+Shift+R">
       <i class="bi bi-robot d-block fs-2 mb-1" id="trainRagIcon"></i>
       <small class="fw-semibold">Train RAG <kbd class="ms-1" style="font-size:.65rem">⌃⇧R</kbd></small>

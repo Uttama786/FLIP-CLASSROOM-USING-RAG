@@ -111,7 +111,7 @@
                 cx="55" cy="55" r="45"
                 stroke="{% if item.pct >= 75 %}#198754{% elif item.pct >= 50 %}#ffc107{% else %}#dc3545{% endif %}"
                 stroke-dasharray="{{ circ }}"
-                stroke-dashoffset="{% widthratio item.pct 100 circ|floatformat:0 1 %}"
+                stroke-dashoffset="{{ circ }}"
                 style="stroke-dashoffset: calc({{ circ }} - {{ circ }} * {{ item.pct }} / 100)"
               />
             </svg>

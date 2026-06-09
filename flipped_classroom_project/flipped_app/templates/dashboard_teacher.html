@@ -300,5 +300,15 @@ document.addEventListener('DOMContentLoaded', function () {
       <i class="bi bi-journal-plus d-block fs-3 mb-1"></i><span class="small fw-semibold">Create Assignment</span>
     </a>
   </div>
+  <div class="col-6 col-md-3">
+    <a href="{% url 'subjects' %}" class="btn btn-outline-secondary w-100 py-3 text-center">
+      <i class="bi bi-book-fill d-block fs-3 mb-1"></i><span class="small fw-semibold">Manage Subjects</span>
+    </a>
+  </div>
+  <div class="col-6 col-md-3">
+    <a href="{% url 'add_subject' %}" class="btn btn-outline-dark w-100 py-3 text-center">
+      <i class="bi bi-plus-square-fill d-block fs-3 mb-1"></i><span class="small fw-semibold">Add Subject</span>
+    </a>
+  </div>
 </div>
 {% endblock %}

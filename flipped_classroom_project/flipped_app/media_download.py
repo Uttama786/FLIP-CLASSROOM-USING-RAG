@@ -1,57 +1,107 @@
-"""Serve study materials from local disk or Cloudinary."""
+"""Serve study materials from local disk or Cloudinary.
+
+Root cause of download failure (fixed here):
+1. PATH TRIPLING: material.file.name stored as "materials/DS_notes.pdf"
+   → _public_id_candidates prefixed "media/" → "media/materials/DS_notes.pdf"
+   → Cloudinary secure_url returned "…/media/materials/DS_notes.pdf"
+   → fl_attachment injected → "…/media/materials/materials/DS_notes.pdf"  ← WRONG
+   Fix: strip one leading "media/" before building candidates.
+
+2. fl_attachment on image-type PDF: Cloudinary NEEDS fl_attachment to return
+   actual PDF bytes (without it, image/upload serves an image preview).
+   The ERR_INVALID_RESPONSE in the earlier screenshot was caused by the
+   tripled path, NOT by fl_attachment itself.
+   Fix: keep fl_attachment but proxy the bytes through Django so the
+   browser never redirects to a broken Cloudinary URL.
+
+3. Proxy-streaming: Django fetches the file, sets Content-Disposition and
+   Content-Type itself, then streams to the browser. No direct redirects.
+"""
 
 import mimetypes
 import os
+import re
 from pathlib import Path
 
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
 def uses_cloudinary() -> bool:
     return bool(os.environ.get('CLOUDINARY_URL', '').strip())
 
 
-def _normalize_name(file_name: str) -> str:
-    return file_name.replace('\\', '/').lstrip('/')
+def _strip_media_prefix(name: str) -> str:
+    """Remove exactly one leading 'media/' (if present)."""
+    name = name.replace('\\', '/').lstrip('/')
+    if name.startswith('media/'):
+        name = name[len('media/'):]
+    return name
 
 
 def _public_id_candidates(file_name: str) -> list:
-    """Build public_id variants stored in Cloudinary (with/without media/ prefix)."""
-    name = _normalize_name(file_name)
-    base = Path(name).stem
-    ext = Path(name).suffix.lower().lstrip('.')
+    """
+    Build public_id strings to try against the Cloudinary Admin API.
 
-    candidates = [name]
-    if not name.startswith('media/'):
-        candidates.append(f'media/{name}')
-    if ext and not name.endswith(f'.{ext}'):
-        candidates.append(f'{name}.{ext}')
-        if not name.startswith('media/'):
-            candidates.append(f'media/{name}.{ext}')
-    # Cloudinary often stores public_id without extension for image uploads
+    django-cloudinary-storage typically stores files under a path like:
+        materials/DS_complete_notes_abc123.pdf   (raw)
+    or without extension for some uploads.
+
+    We try both the normalised path and a 'media/' prefixed variant,
+    plus stem-only variants for uploads that strip the extension.
+    """
+    name = _strip_media_prefix(file_name)
+    ext = Path(name).suffix.lower().lstrip('.')   # e.g. "pdf"
+
+    candidates = []
+
+    # Primary: as-is normalised
+    candidates.append(name)
+
+    # Without extension (Cloudinary raw often strips it on upload)
     if ext:
-        for prefix in ('', 'media/'):
-            stem_path = f'{prefix}{base}' if prefix else base
-            if stem_path not in candidates:
-                candidates.append(stem_path)
-            inner = name.replace(f'.{ext}', '')
-            if inner and inner not in candidates:
-                candidates.append(inner)
-            if not inner.startswith('media/'):
-                candidates.append(f'media/{inner}')
+        no_ext = name[: -(len(ext) + 1)]   # strip ".ext"
+        candidates.append(no_ext)
 
-    seen = set()
-    ordered = []
+    # With legacy "media/" prefix (older uploads)
+    candidates.append(f'media/{name}')
+    if ext:
+        candidates.append(f'media/{name[: -(len(ext) + 1)]}')
+
+    # De-duplicate, preserve order
+    seen: set = set()
+    result = []
     for c in candidates:
         if c and c not in seen:
             seen.add(c)
-            ordered.append(c)
-    return ordered
+            result.append(c)
+    return result
 
+
+def _inject_fl_attachment(url: str) -> str:
+    """
+    Inject fl_attachment into a Cloudinary delivery URL so the server
+    returns the actual file bytes (required for PDFs stored as image type).
+    Idempotent — won't double-inject.
+    """
+    if '/fl_attachment/' in url or '/fl_attachment:' in url:
+        return url
+    if '/upload/' in url:
+        return url.replace('/upload/', '/upload/fl_attachment/', 1)
+    return url
+
+
+# ── Cloudinary resolution ─────────────────────────────────────────────────────
 
 def resolve_cloudinary_resource(file_name: str) -> dict:
-    """Look up the asset in Cloudinary Admin API (correct version + URL)."""
+    """
+    Look up the asset in the Cloudinary Admin API.
+    Returns the resource dict (contains the authoritative secure_url with
+    correct version number — NOT the URL stored in the DB which can be stale).
+    Tries 'raw' first (PDFs should be raw), then 'image', then 'video'.
+    """
     import cloudinary.api
 
     last_error = None
@@ -62,28 +112,33 @@ def resolve_cloudinary_resource(file_name: str) -> dict:
             except Exception as exc:
                 last_error = exc
                 continue
+
     raise Http404(f'Material not found in Cloudinary: {last_error}')
 
 
-def _delivery_url(info: dict, attachment: bool = False) -> str:
-    """Use secure_url from API (has the real version, not v1)."""
+def _get_download_url(info: dict) -> str:
+    """
+    Build the final download URL from the Cloudinary API response.
+    Injects fl_attachment so Cloudinary returns raw file bytes.
+    """
     url = info.get('secure_url') or info.get('url')
     if not url:
         raise Http404('Cloudinary asset has no delivery URL')
-    if attachment and '/upload/' in url:
-        # fl_attachment only — never fl_attachment:filename.pdf (causes HTTP 400)
-        if '/fl_attachment/' not in url:
-            url = url.replace('/upload/', '/upload/fl_attachment/', 1)
-    return url
+    return _inject_fl_attachment(url)
 
 
-def _proxy_download(url: str, filename: str) -> HttpResponse | None:
-    """Stream file through Django when Cloudinary allows delivery."""
-    import requests
+# ── Proxy streaming ───────────────────────────────────────────────────────────
 
+def _proxy_stream(url: str, filename: str) -> HttpResponse | None:
+    """
+    Fetch the file from Cloudinary and stream it back through Django.
+    Sets Content-Disposition so the browser downloads (not previews) it.
+    Returns None if the fetch fails; caller should fall back to redirect.
+    """
     try:
-        resp = requests.get(url, timeout=60)
-    except requests.RequestException:
+        import requests as _requests
+        resp = _requests.get(url, timeout=60, stream=True)
+    except Exception:
         return None
 
     if resp.status_code != 200 or not resp.content:
@@ -93,33 +148,51 @@ def _proxy_download(url: str, filename: str) -> HttpResponse | None:
         'content-type',
         mimetypes.guess_type(filename)[0] or 'application/octet-stream',
     )
+    # Enforce PDF MIME type regardless of what Cloudinary says
+    if filename.lower().endswith('.pdf'):
+        content_type = 'application/pdf'
+
     response = HttpResponse(resp.content, content_type=content_type)
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    safe = filename.replace('"', '_')
+    response['Content-Disposition'] = f'attachment; filename="{safe}"'
+    response['Content-Length'] = len(resp.content)
     return response
 
 
+# ── Public entry point ────────────────────────────────────────────────────────
+
 def serve_material_file(material, as_attachment: bool = True):
-    """Return file response for a StudyMaterial instance."""
+    """Return an HTTP file response for a StudyMaterial instance."""
     if not material.file or not material.file.name:
         raise Http404('Material file not found')
 
-    filename = Path(material.file.name).name
-    if not filename and material.title:
-        filename = f'{material.title[:80]}.pdf'
+    filename = Path(material.file.name).name or f'{material.title[:80]}.pdf'
 
+    # ── Cloudinary path ───────────────────────────────────────────────────────
     if uses_cloudinary():
-        info = resolve_cloudinary_resource(material.file.name)
-        url = _delivery_url(info, attachment=as_attachment)
+        try:
+            info = resolve_cloudinary_resource(material.file.name)
+        except Http404:
+            raise
+        except Exception as exc:
+            raise Http404(f'Could not resolve material in Cloudinary: {exc}')
 
-        # Proxy works for raw/txt; PDF-as-image needs Cloudinary PDF delivery enabled
-        proxied = _proxy_download(url, filename)
-        if proxied is not None:
-            return proxied
+        if as_attachment:
+            url = _get_download_url(info)
+            # Try to proxy so browser never touches a broken Cloudinary URL
+            proxied = _proxy_stream(url, filename)
+            if proxied is not None:
+                return proxied
+            # Proxy failed → redirect to fl_attachment URL directly
+            return HttpResponseRedirect(url)
 
-        # Fallback: redirect to canonical URL (user may need Cloudinary security setting)
-        return HttpResponseRedirect(url)
+        # View-only (no download): redirect to plain URL without fl_attachment
+        plain_url = info.get('secure_url') or info.get('url')
+        return HttpResponseRedirect(plain_url)
 
-    local_path = Path(settings.MEDIA_ROOT) / _normalize_name(material.file.name)
+    # ── Local disk path ───────────────────────────────────────────────────────
+    norm = _strip_media_prefix(material.file.name)
+    local_path = Path(settings.MEDIA_ROOT) / norm
     if not local_path.is_file():
         alt = Path(settings.MEDIA_ROOT) / 'materials' / filename
         if alt.is_file():

@@ -115,7 +115,9 @@ class UploadAndErrorSanitizationTests(TestCase):
         self.assertIn("Unsupported file type", str(form.errors))
 
     @patch("rag_engine.chat._get_groq_client", side_effect=RuntimeError("sensitive backend detail"))
-    @patch("rag_engine.chat.get_context", return_value=[])
+    @patch("rag_engine.chat.get_context", return_value=[
+        {"text": "BFS is Breadth-First Search algorithm.", "source": "DS notes", "subject": "DS", "score": 0.9}
+    ])
     def test_rag_ask_does_not_leak_internal_errors(self, _mock_ctx, _mock_client):
         from rag_engine.chat import ask
 

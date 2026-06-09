@@ -10,6 +10,33 @@ from .models import (
 )
 
 
+class SubjectForm(forms.ModelForm):
+    """Form for teachers/admins to add or edit a subject."""
+    _fc = {'class': 'form-control'}
+
+    name = forms.CharField(
+        max_length=100,
+        widget=forms.TextInput(attrs={**_fc, 'placeholder': 'e.g. Operating Systems'}),
+        help_text='Full subject name'
+    )
+    code = forms.CharField(
+        max_length=20,
+        widget=forms.TextInput(attrs={**_fc, 'placeholder': 'e.g. OS', 'style': 'text-transform:uppercase'}),
+        help_text='Short unique code (e.g. DS, PY, OS)'
+    )
+    description = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={**_fc, 'rows': 3, 'placeholder': 'Brief description (optional)'}),
+    )
+
+    class Meta:
+        model = Subject
+        fields = ['name', 'code', 'description']
+
+    def clean_code(self):
+        return self.cleaned_data.get('code', '').strip().upper()
+
+
 def _validate_uploaded_file(
     uploaded_file,
     *,

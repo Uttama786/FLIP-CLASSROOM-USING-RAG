@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block title %}Delete Subject – FlipLearn{% endblock %}
+
+{% block extra_css %}
+<style>
+.confirm-card {
+  max-width: 520px;
+  margin: 0 auto;
+  border-radius: 18px;
+  border: none;
+}
+.danger-icon {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: linear-gradient(135deg, #dc3545 0%, #9b1c2c 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2rem; color: #fff; margin: 0 auto 1.5rem;
+}
+.subject-info-box {
+  background: rgba(220,53,69,.07);
+  border: 1px solid rgba(220,53,69,.25);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+[data-theme="dark"] .subject-info-box {
+  background: rgba(220,53,69,.12);
+  border-color: rgba(220,53,69,.35);
+}
+.warning-list li { font-size: .85rem; margin-bottom: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <a href="{% url 'subjects' %}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Back to Subjects
+  </a>
+</div>
+
+<div class="confirm-card card shadow">
+  <div class="card-body p-4 p-md-5 text-center">
+
+    <div class="danger-icon"><i class="bi bi-trash3-fill"></i></div>
+
+    <h4 class="fw-bold mb-1 text-danger">Delete Subject?</h4>
+    <p class="text-muted mb-4">This action is <strong>permanent</strong> and cannot be undone.</p>
+
+    <div class="subject-info-box text-start mb-4">
+      <div class="d-flex align-items-center gap-3">
+        <span class="badge bg-primary-subtle text-primary fs-6 px-3 py-2 fw-bold">{{ subject.code }}</span>
+        <div>
+          <div class="fw-bold">{{ subject.name }}</div>
+          <small class="text-muted">{{ subject.description|default:'No description' }}</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-start mb-4">
+      <p class="fw-semibold text-danger mb-2">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>Deleting this subject will also remove:
+      </p>
+      <ul class="warning-list text-muted ps-3">
+        <li><i class="bi bi-camera-video me-1 text-info"></i>All associated <strong>video lectures</strong></li>
+        <li><i class="bi bi-file-earmark-text me-1 text-secondary"></i>All associated <strong>study materials</strong></li>
+        <li><i class="bi bi-patch-question me-1 text-warning"></i>All associated <strong>quizzes & questions</strong></li>
+        <li><i class="bi bi-journal-code me-1 text-dark"></i>All associated <strong>assignments & submissions</strong></li>
+        <li><i class="bi bi-people me-1 text-success"></i>Student <strong>enrollment records</strong> for this subject</li>
+      </ul>
+    </div>
+
+    <div class="d-flex justify-content-center gap-3 flex-wrap">
+      <a href="{% url 'subjects' %}" class="btn btn-outline-secondary px-4">
+        <i class="bi bi-x-circle me-1"></i>Cancel
+      </a>
+      <form method="post" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger px-4">
+          <i class="bi bi-trash3-fill me-1"></i>Yes, Delete Subject
+        </button>
+      </form>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

@@ -2026,6 +2026,133 @@ main { animation: pageIn 0.45s cubic-bezier(0.22,1,0.36,1); }
   color: #c084fc;
 }
 
+/* ── Knowledge chip: make it look clickable ─────────── */
+button.chat-source-card {
+  cursor: pointer;
+  position: relative;
+  background: var(--chat-card-bg);
+  border: 1.5px solid var(--chat-card-border);
+  text-align: left;
+}
+button.chat-source-card:hover {
+  border-color: var(--primary);
+  background: rgba(91,94,244,0.07);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(91,94,244,0.15);
+}
+[data-theme="dark"] button.chat-source-card:hover {
+  border-color: #a78bfa;
+  background: rgba(167,139,250,0.1);
+  box-shadow: 0 3px 14px rgba(167,139,250,0.2);
+}
+button.chat-source-card:active {
+  transform: translateY(0);
+}
+
+/* ── Citation source popover ────────────────────────── */
+.chat-source-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 260px;
+  max-width: 320px;
+  background: var(--chat-surface, #fff);
+  border: 1px solid var(--chat-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+  z-index: 100;
+  overflow: hidden;
+  animation: popoverIn 0.18s cubic-bezier(.22,1,.36,1) forwards;
+  text-align: left;
+}
+[data-theme="dark"] .chat-source-popover {
+  background: #1a1a2e;
+  border-color: rgba(167,139,250,0.3);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 2px 12px rgba(167,139,250,0.15);
+}
+@keyframes popoverIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.chat-source-popover-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--chat-border);
+  background: rgba(91,94,244,0.04);
+}
+[data-theme="dark"] .chat-source-popover-header {
+  background: rgba(167,139,250,0.06);
+}
+.chat-source-popover-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: rgba(91,94,244,0.12);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+[data-theme="dark"] .chat-source-popover-icon {
+  background: rgba(167,139,250,0.15);
+  color: #a78bfa;
+}
+.chat-source-popover-meta {
+  flex: 1;
+  min-width: 0;
+}
+.chat-source-popover-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--chat-txt);
+  line-height: 1.3;
+  word-break: break-word;
+}
+.chat-source-popover-subject {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: rgba(91,94,244,0.12);
+  color: var(--primary);
+  padding: 1px 7px;
+  border-radius: 20px;
+}
+[data-theme="dark"] .chat-source-popover-subject {
+  background: rgba(167,139,250,0.15);
+  color: #c084fc;
+}
+.chat-source-popover-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--chat-sub);
+  padding: 0 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: color 0.15s;
+}
+.chat-source-popover-close:hover { color: #dc3545; }
+.chat-source-popover-snippet {
+  padding: 10px 14px 12px;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--chat-sub);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.chat-source-popover-empty {
+  font-style: italic;
+  opacity: 0.65;
+}
+
+
 /* ── Related questions ──────────────────────────────── */
 .chat-related {
   margin-top: 14px;

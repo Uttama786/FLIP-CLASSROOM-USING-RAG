@@ -1015,7 +1015,7 @@
       const isWiki = s.source_type === 'wikipedia';
       const isWeb  = s.source_type === 'web';
       const isLink = isWiki || isWeb;
-      const card = document.createElement(isLink ? 'a' : 'div');
+      const card = document.createElement(isLink ? 'a' : 'button');
       card.className = 'chat-source-card' +
         (isWiki ? ' chat-source-card-wiki' : '') +
         (isWeb  ? ' chat-source-card-web'  : '');
@@ -1037,11 +1037,66 @@
           `<span class="chat-source-title">${escapeHtml(s.title || s)}</span>` +
           `<span class="chat-source-subject chat-source-subject-web">Web</span>`;
       } else {
+        /* ── Knowledge-base chip (clickable popover) ── */
         knowledgeIdx++;
+        card.type = 'button';
+        card.title = 'Click to preview this source';
+        card.setAttribute('data-source-title',   s.title   || '');
+        card.setAttribute('data-source-subject', s.subject || '');
+        card.setAttribute('data-source-snippet', s.snippet || '');
         card.innerHTML =
           `<span class="chat-source-num">${knowledgeIdx}</span>` +
           `<span class="chat-source-title">${escapeHtml(s.title || s)}</span>` +
           (s.subject ? `<span class="chat-source-subject">${escapeHtml(s.subject)}</span>` : '');
+
+        /* open/close the popover on click */
+        card.addEventListener('click', (e) => {
+          e.stopPropagation();
+          /* close any other open popovers */
+          document.querySelectorAll('.chat-source-popover').forEach(p => {
+            if (p !== card._popover) p.remove();
+          });
+          /* toggle: if already open, close it */
+          if (card._popover && card._popover.isConnected) {
+            card._popover.remove();
+            card._popover = null;
+            return;
+          }
+          const title   = card.getAttribute('data-source-title');
+          const subject = card.getAttribute('data-source-subject');
+          const snippet = card.getAttribute('data-source-snippet');
+          const pop = document.createElement('div');
+          pop.className = 'chat-source-popover';
+          pop.innerHTML =
+            `<div class="chat-source-popover-header">` +
+              `<span class="chat-source-popover-icon"><i class="bi bi-file-earmark-text-fill"></i></span>` +
+              `<div class="chat-source-popover-meta">` +
+                `<div class="chat-source-popover-title">${escapeHtml(title)}</div>` +
+                (subject ? `<div class="chat-source-popover-subject">${escapeHtml(subject)}</div>` : '') +
+              `</div>` +
+              `<button class="chat-source-popover-close" title="Close">×</button>` +
+            `</div>` +
+            (snippet
+              ? `<div class="chat-source-popover-snippet">${escapeHtml(snippet)}${snippet.length >= 220 ? '…' : ''}</div>`
+              : `<div class="chat-source-popover-snippet chat-source-popover-empty">No preview available.</div>`);
+          pop.querySelector('.chat-source-popover-close').addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            pop.remove();
+            card._popover = null;
+          });
+          card.appendChild(pop);
+          card._popover = pop;
+          /* auto-close on outside click */
+          setTimeout(() => {
+            document.addEventListener('click', function outsideClose(ev) {
+              if (!pop.contains(ev.target) && ev.target !== card) {
+                pop.remove();
+                card._popover = null;
+                document.removeEventListener('click', outsideClose);
+              }
+            });
+          }, 0);
+        });
       }
       row.appendChild(card);
     });

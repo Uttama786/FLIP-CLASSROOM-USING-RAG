@@ -13,7 +13,9 @@ urlpatterns = [
 
     # Subjects
     path('subjects/', views.subject_list_view, name='subjects'),
+    path('subjects/add/', views.add_subject_view, name='add_subject'),
     path('subjects/enroll/<int:subject_id>/', views.enroll_subject_view, name='enroll'),
+    path('subjects/<int:subject_id>/delete/', views.delete_subject_view, name='delete_subject'),
 
     # Video Lectures
     path('videos/', views.video_list_view, name='videos'),
