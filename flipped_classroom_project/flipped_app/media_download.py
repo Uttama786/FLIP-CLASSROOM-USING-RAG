@@ -168,50 +168,13 @@ def _proxy_stream(url: str, filename: str) -> HttpResponse | None:
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def serve_material_file(material, as_attachment: bool = True):
-    """Return an HTTP file response for a StudyMaterial instance."""
+    """Return an HTTP file response for a StudyMaterial instance (LOCAL DISK ONLY)."""
     if not material.file or not material.file.name:
         raise Http404('Material file not found')
 
     filename = Path(material.file.name).name or f'{material.title[:80]}.pdf'
 
-    # ── Cloudinary path ───────────────────────────────────────────────────────
-    if uses_cloudinary():
-        # Bypass Cloudinary Admin API (Error 420 rate limit prevention) by generating URL locally via django-cloudinary-storage
-        try:
-            url = material.file.url
-            if as_attachment:
-                url = _inject_fl_attachment(url)
-            else:
-                if '/fl_attachment/' in url:
-                    url = url.replace('/fl_attachment/', '/')
-            
-            # Try to stream it back as a proxy download
-            if as_attachment:
-                proxied = _proxy_stream(url, filename)
-                if proxied is not None:
-                    return proxied
-            
-            return HttpResponseRedirect(url)
-        except Exception:
-            # Fallback to Admin API resolution only if local URL generation fails
-            try:
-                info = resolve_cloudinary_resource(material.file.name)
-            except Http404:
-                raise
-            except Exception as exc:
-                raise Http404(f'Could not resolve material in Cloudinary: {exc}')
-
-            if as_attachment:
-                url = _get_download_url(info)
-                proxied = _proxy_stream(url, filename)
-                if proxied is not None:
-                    return proxied
-                return HttpResponseRedirect(url)
-
-            plain_url = info.get('secure_url') or info.get('url')
-            return HttpResponseRedirect(plain_url)
-
-    # ── Local disk path ───────────────────────────────────────────────────────
+    # ── Local disk path ONLY ──────────────────────────────────────────────────
     norm = _strip_media_prefix(material.file.name)
     local_path = Path(settings.MEDIA_ROOT) / norm
     if not local_path.is_file():
@@ -219,7 +182,7 @@ def serve_material_file(material, as_attachment: bool = True):
         if alt.is_file():
             local_path = alt
         else:
-            raise Http404('Material file is unavailable on this server')
+            raise Http404(f'Material file not found at {local_path} or {alt}')
 
     # Detect mock PDFs (which are text files starting with '==Start of PDF==')
     try:

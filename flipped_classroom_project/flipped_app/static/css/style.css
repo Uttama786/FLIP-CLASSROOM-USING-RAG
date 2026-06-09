@@ -1840,7 +1840,7 @@ main { animation: pageIn 0.45s cubic-bezier(0.22,1,0.36,1); }
 }
 .chat-answer-text pre {
   background: var(--chat-pre-bg);
-  color: var(--chat-text);
+  color: #e4e4f0;
   border-radius: 10px;
   padding: 14px 16px;
   overflow-x: auto;
@@ -2382,7 +2382,7 @@ button.chat-source-card:active {
 }
 .chat-shortcuts-btn:hover {
   background: var(--chat-user-bg);
-  color: var(--chat-text);
+  color: var(--chat-txt);
 }
 
 /* ── Shortcuts Popover ──────────────────────────────── */
@@ -2404,7 +2404,7 @@ button.chat-source-card:active {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
-  color: var(--chat-text);
+  color: var(--chat-txt);
 }
 .chat-shortcuts-popover-close {
   background: none;
@@ -2426,7 +2426,7 @@ button.chat-source-card:active {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--chat-text);
+  color: var(--chat-txt);
   font-size: 0.78rem;
 }
 .chat-shortcuts-list kbd {
@@ -2438,7 +2438,7 @@ button.chat-source-card:active {
   padding: 1px 5px;
   font-family: 'Courier New', Consolas, monospace;
   font-size: 0.72rem;
-  color: var(--chat-text);
+  color: var(--chat-txt);
   white-space: nowrap;
 }
 

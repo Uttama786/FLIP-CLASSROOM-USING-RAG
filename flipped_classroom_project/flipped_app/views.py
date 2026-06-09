@@ -172,10 +172,10 @@ def dashboard_view(request):
         pending_grades  = AssignmentSubmission.objects.filter(is_graded=False).count()
         recent_users    = User.objects.order_by('-date_joined')[:8]
         perf_distribution = {
-            'High':    StudentPerformance.objects.filter(performance_label='High').count(),
-            'Medium':  StudentPerformance.objects.filter(performance_label='Medium').count(),
-            'Low':     StudentPerformance.objects.filter(performance_label='Low').count(),
-            'At-Risk': StudentPerformance.objects.filter(performance_label='At-Risk').count(),
+            'High':    StudentPerformance.objects.filter(Q(performance_label='High') | Q(performance_label__in=[None, ''], predicted_label='High')).count(),
+            'Medium':  StudentPerformance.objects.filter(Q(performance_label='Medium') | Q(performance_label__in=[None, ''], predicted_label='Medium')).count(),
+            'Low':     StudentPerformance.objects.filter(Q(performance_label='Low') | Q(performance_label__in=[None, ''], predicted_label='Low')).count(),
+            'At-Risk': StudentPerformance.objects.filter(Q(performance_label='At-Risk') | Q(performance_label__in=[None, ''], predicted_label='At-Risk')).count(),
         }
         subject_stats = [
             {
@@ -217,10 +217,10 @@ def dashboard_view(request):
         recent_submissions = AssignmentSubmission.objects.order_by('-submitted_at')[:8]
         quiz_attempts_recent = QuizAttempt.objects.order_by('-attempted_at')[:8]
         perf_distribution = {
-            'High':    StudentPerformance.objects.filter(performance_label='High').count(),
-            'Medium':  StudentPerformance.objects.filter(performance_label='Medium').count(),
-            'Low':     StudentPerformance.objects.filter(performance_label='Low').count(),
-            'At-Risk': StudentPerformance.objects.filter(performance_label='At-Risk').count(),
+            'High':    StudentPerformance.objects.filter(Q(performance_label='High') | Q(performance_label__in=[None, ''], predicted_label='High')).count(),
+            'Medium':  StudentPerformance.objects.filter(Q(performance_label='Medium') | Q(performance_label__in=[None, ''], predicted_label='Medium')).count(),
+            'Low':     StudentPerformance.objects.filter(Q(performance_label='Low') | Q(performance_label__in=[None, ''], predicted_label='Low')).count(),
+            'At-Risk': StudentPerformance.objects.filter(Q(performance_label='At-Risk') | Q(performance_label__in=[None, ''], predicted_label='At-Risk')).count(),
         }
         teacher_notifications = Notification.objects.filter(recipient=user, is_read=False)
 

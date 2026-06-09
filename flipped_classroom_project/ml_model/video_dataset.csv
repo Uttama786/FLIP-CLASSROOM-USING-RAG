@@ -1,0 +1,2 @@
+record_id,usn,student_name,subject_code,subject_name,video_title,video_duration_min,watch_duration_min,completed,completion_pct,watched_at,engagement_label
+DB_2_19,R_vid_stu,vid_stu,VS,Video Subject,Test Video,20.0,0.0,False,0.0,2026-06-09 16:11:40.505150+00:00,Minimal

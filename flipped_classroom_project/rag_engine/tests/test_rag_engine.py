@@ -457,3 +457,32 @@ class RetrieverTest(TestCase):
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["subject"], "AIML")
+
+
+class CondenseQueryTest(TestCase):
+    def test_condense_no_history_returns_original(self):
+        from rag_engine.chat import _condense_query
+        result = _condense_query("explain in simpler terms", chat_history=None)
+        self.assertEqual(result, "explain in simpler terms")
+
+        result_empty = _condense_query("explain in simpler terms", chat_history=[])
+        self.assertEqual(result_empty, "explain in simpler terms")
+
+    @patch("rag_engine.chat._get_groq_client")
+    def test_condense_with_history_calls_groq(self, mock_get_client):
+        from rag_engine.chat import _condense_query
+        mock_client = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.choices[0].message.content = "Explain BFS in simpler terms"
+        mock_client.chat.completions.create.return_value = mock_resp
+        mock_get_client.return_value = mock_client
+
+        history = [
+            {"role": "user", "content": "What is BFS?"},
+            {"role": "assistant", "content": "BFS stands for Breadth First Search..."},
+        ]
+
+        result = _condense_query("explain in simpler terms", chat_history=history, client=mock_client)
+        self.assertEqual(result, "Explain BFS in simpler terms")
+        mock_client.chat.completions.create.assert_called_once()
+

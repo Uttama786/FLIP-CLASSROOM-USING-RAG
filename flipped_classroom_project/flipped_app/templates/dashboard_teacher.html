@@ -38,19 +38,32 @@ document.addEventListener('DOMContentLoaded', function () {
   const perfCtx = document.getElementById('teacherPerfChart');
   if (perfCtx && typeof Chart !== 'undefined') {
     const perfData = {{ perf_distribution|safe }};
-    new Chart(perfCtx, {
-      type: 'doughnut',
-      data: {
-        labels: Object.keys(perfData),
-        datasets: [{ data: Object.values(perfData),
-          backgroundColor: ['#198754','#0d6efd','#ffc107','#dc3545'],
-          borderWidth: 3, hoverOffset: 6 }]
-      },
-      options: {
-        responsive: true, cutout: '65%',
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } }
-      }
-    });
+    const total = Object.values(perfData).reduce((a, b) => a + b, 0);
+    if (total === 0) {
+      perfCtx.style.display = 'none';
+      const parent = perfCtx.parentElement;
+      const noDataEl = document.createElement('div');
+      noDataEl.className = 'd-flex flex-column align-items-center justify-content-center h-100 text-muted w-100';
+      noDataEl.innerHTML = `
+        <i class="bi bi-pie-chart fs-1 mb-2 opacity-50"></i>
+        <span class="small fw-semibold">No performance data available yet</span>
+      `;
+      parent.appendChild(noDataEl);
+    } else {
+      new Chart(perfCtx, {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(perfData),
+          datasets: [{ data: Object.values(perfData),
+            backgroundColor: ['#198754','#0d6efd','#ffc107','#dc3545'],
+            borderWidth: 3, hoverOffset: 6 }]
+        },
+        options: {
+          responsive: true, cutout: '65%',
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } }
+        }
+      });
+    }
   }
 
   /* ── Pending vs Graded bar ── */

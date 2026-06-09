@@ -52,6 +52,68 @@ def _get_groq_client():
     return Groq(api_key=api_key)
 
 
+def _condense_query(
+    user_query: str,
+    chat_history: Optional[List[dict]] = None,
+    client = None,
+) -> str:
+    """
+    Rephrase a user's follow-up query to be a standalone query using conversation history,
+    so that it can be searched effectively in FAISS.
+    """
+    if not chat_history:
+        return user_query
+
+    # Filter chat history to actual user/assistant conversational turns
+    history_turns = [m for m in chat_history if m.get("role") in ("user", "assistant")]
+    if not history_turns:
+        return user_query
+
+    # Convert last few turns (max 4) into a text transcript
+    history_str = ""
+    for msg in history_turns[-4:]:
+        role = "Student" if msg["role"] == "user" else "AI Tutor"
+        history_str += f"{role}: {msg['content']}\n"
+
+    condense_prompt = (
+        "Given the following conversation history and a student's follow-up question, "
+        "rephrase the follow-up question to be a standalone search query (in the original language) "
+        "that contains all necessary context from the conversation history.\n\n"
+        "Rules:\n"
+        "- The standalone query will be used for a semantic document search.\n"
+        "- Do NOT add any conversational prefixes, explanations, or quotes. Output ONLY the rephrased query.\n"
+        "- If the follow-up question is already standalone, is a simple greeting, or does not depend on the history, "
+        "output the follow-up question exactly as is.\n\n"
+        f"Conversation History:\n{history_str}\n"
+        f"Follow-up Question: {user_query}\n"
+        "Standalone Question:"
+    )
+
+    try:
+        if client is None:
+            client = _get_groq_client()
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a search query optimizer."},
+                {"role": "user", "content": condense_prompt},
+            ],
+            max_tokens=80,
+            temperature=0.0,
+        )
+        rewritten = response.choices[0].message.content.strip()
+        # strip surrounding quotes if any
+        if rewritten.startswith('"') and rewritten.endswith('"'):
+            rewritten = rewritten[1:-1].strip()
+        elif rewritten.startswith("'") and rewritten.endswith("'"):
+            rewritten = rewritten[1:-1].strip()
+        logger.info("Rewrote query from '%s' to '%s'", user_query, rewritten)
+        return rewritten
+    except Exception as e:
+        logger.exception("Failed to condense query: %s", e)
+        return user_query
+
+
 SYSTEM_PROMPT = """You are FlipLearn AI, an expert academic tutor AND platform guide for the FlipLearn Flipped Classroom platform used by M.Tech CSE students.
 
 You have TWO roles:
@@ -317,6 +379,9 @@ def stream_answer(
     # ── Shared Groq client (created once, reused throughout) ────────────────
     client = _get_groq_client()
 
+    # Condense query if chat history exists
+    condensed_query = _condense_query(user_query, chat_history, client)
+
     # ── 1. Retrieve FAISS (always) + optional web sources ───────────────────
     wiki_results: list = []
     web_results: list  = []
@@ -327,10 +392,10 @@ def stream_answer(
     web_thread = None
 
     def _wiki():
-        wiki_results.extend(_fetch_wiki_sources(user_query, limit=2))
+        wiki_results.extend(_fetch_wiki_sources(condensed_query, limit=2))
 
     def _web():
-        results, ctx = _groq_web_tool_search(user_query, client)
+        results, ctx = _groq_web_tool_search(condensed_query, client)
         web_results.extend(results)
         if ctx:
             web_ctx_holder.append(ctx)
@@ -342,7 +407,7 @@ def stream_answer(
         web_thread.start()
 
     # FAISS retrieval runs in main thread while background threads work
-    chunks = get_context(user_query, top_k=top_k, subject_filter=subject_code)
+    chunks = get_context(condensed_query, top_k=top_k, subject_filter=subject_code)
 
     # ── Deterministic Out-of-Domain / Low-Similarity Filter ──
     MIN_SIMILARITY_THRESHOLD = 0.38
@@ -469,7 +534,19 @@ def ask(
     lang_pref: Optional[str] = None,
 ) -> dict:
     """Non-streaming fallback — returns full reply at once."""
-    chunks = get_context(user_query, top_k=top_k, subject_filter=subject_code)
+    try:
+        client = _get_groq_client()
+    except Exception as e:
+        logger.exception("RAG ask failed to initialize client: %s", e)
+        return {
+            "reply": "Sorry, something went wrong while generating the response.",
+            "sources": [],
+            "error": "internal_error",
+        }
+
+    condensed_query = _condense_query(user_query, chat_history, client)
+
+    chunks = get_context(condensed_query, top_k=top_k, subject_filter=subject_code)
 
     # ── Deterministic Out-of-Domain / Low-Similarity Filter ──
     MIN_SIMILARITY_THRESHOLD = 0.38
@@ -494,7 +571,6 @@ def ask(
     messages = build_prompt_messages(user_query, chunks, chat_history, lang_pref=lang_pref)
 
     try:
-        client = _get_groq_client()
         response = client.chat.completions.create(
             model=GROQ_MODEL,
             messages=messages,

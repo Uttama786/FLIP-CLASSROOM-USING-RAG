@@ -6,18 +6,31 @@
 const perfData = {{ perf_distribution|safe }};
 const ctx = document.getElementById('perfChart');
 if (ctx) {
-  new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: Object.keys(perfData),
-      datasets: [{
-        data: Object.values(perfData),
-        backgroundColor: ['#198754','#0d6efd','#ffc107','#dc3545'],
-        borderWidth: 2,
-      }]
-    },
-    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-  });
+  const total = Object.values(perfData).reduce((a, b) => a + b, 0);
+  if (total === 0) {
+    ctx.style.display = 'none';
+    const parent = ctx.parentElement;
+    const noDataEl = document.createElement('div');
+    noDataEl.className = 'd-flex flex-column align-items-center justify-content-center h-100 text-muted py-4 w-100';
+    noDataEl.innerHTML = `
+      <i class="bi bi-pie-chart fs-2 mb-2 opacity-50"></i>
+      <div class="small fw-semibold">No performance data available yet</div>
+    `;
+    parent.appendChild(noDataEl);
+  } else {
+    new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(perfData),
+        datasets: [{
+          data: Object.values(perfData),
+          backgroundColor: ['#198754','#0d6efd','#ffc107','#dc3545'],
+          borderWidth: 2,
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    });
+  }
 }
 {% endif %}
 </script>

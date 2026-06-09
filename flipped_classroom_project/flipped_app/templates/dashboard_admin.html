@@ -40,24 +40,37 @@ document.addEventListener('DOMContentLoaded', function () {
   const pd = {{ perf_distribution|safe }};
   const dCtx = document.getElementById('adminPerfDonut');
   if (dCtx && pd && typeof Chart !== 'undefined') {
-    new Chart(dCtx, {
-      type: 'doughnut',
-      data: {
-        labels: ['High', 'Medium', 'Low', 'At-Risk'],
-        datasets: [{
-          data: [pd.High||0, pd.Medium||0, pd.Low||0, pd['At-Risk']||0],
-          backgroundColor: ['#198754','#0d6efd','#ffc107','#dc3545'],
-          borderWidth: 2,
-          borderColor: document.documentElement.getAttribute('data-theme')==='dark'?'#1e1e2e':'#fff'
-        }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, cutout: '65%',
-        plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12 } }
+    const total = (pd.High||0) + (pd.Medium||0) + (pd.Low||0) + (pd['At-Risk']||0);
+    if (total === 0) {
+      dCtx.style.display = 'none';
+      const parent = dCtx.parentElement;
+      const noDataEl = document.createElement('div');
+      noDataEl.className = 'd-flex flex-column align-items-center justify-content-center h-100 text-muted';
+      noDataEl.innerHTML = `
+        <i class="bi bi-pie-chart fs-1 mb-2 opacity-50"></i>
+        <span class="small fw-semibold">No performance data available yet</span>
+      `;
+      parent.appendChild(noDataEl);
+    } else {
+      new Chart(dCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['High', 'Medium', 'Low', 'At-Risk'],
+          datasets: [{
+            data: [pd.High||0, pd.Medium||0, pd.Low||0, pd['At-Risk']||0],
+            backgroundColor: ['#198754','#0d6efd','#ffc107','#dc3545'],
+            borderWidth: 2,
+            borderColor: document.documentElement.getAttribute('data-theme')==='dark'?'#1e1e2e':'#fff'
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '65%',
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12 } }
+          }
         }
-      }
-    });
+      });
+    }
   }
 
   /* ── Subject bar chart ── */
