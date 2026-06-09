@@ -72,6 +72,8 @@ class Command(BaseCommand):
             try:
                 media_root = pathlib.Path(settings.MEDIA_ROOT)
                 local = None
+                
+                # Check direct candidates first
                 for candidate in [
                     media_root / mat.file.name,
                     media_root / 'materials' / pathlib.Path(mat.file.name).name,
@@ -79,6 +81,18 @@ class Command(BaseCommand):
                     if candidate.is_file():
                         local = candidate
                         break
+                
+                # If direct candidates fail, search by prefix (Cloudinary adds random 6-character suffixes)
+                if not local:
+                    import re
+                    base_name = pathlib.Path(mat.file.name).stem
+                    clean_base = re.sub(r'_[a-zA-Z0-9]{6}$', '', base_name)
+                    materials_dir = media_root / 'materials'
+                    if materials_dir.is_dir():
+                        for f in materials_dir.iterdir():
+                            if f.is_file() and (f.stem == clean_base or f.stem.startswith(clean_base)):
+                                local = f
+                                break
 
                 if local:
                     upload_source = str(local)

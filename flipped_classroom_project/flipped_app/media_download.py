@@ -170,25 +170,40 @@ def serve_material_file(material, as_attachment: bool = True):
 
     # ── Cloudinary path ───────────────────────────────────────────────────────
     if uses_cloudinary():
+        # Bypass Cloudinary Admin API (Error 420 rate limit prevention) by generating URL locally via django-cloudinary-storage
         try:
-            info = resolve_cloudinary_resource(material.file.name)
-        except Http404:
-            raise
-        except Exception as exc:
-            raise Http404(f'Could not resolve material in Cloudinary: {exc}')
-
-        if as_attachment:
-            url = _get_download_url(info)
-            # Try to proxy so browser never touches a broken Cloudinary URL
-            proxied = _proxy_stream(url, filename)
-            if proxied is not None:
-                return proxied
-            # Proxy failed → redirect to fl_attachment URL directly
+            url = material.file.url
+            if as_attachment:
+                url = _inject_fl_attachment(url)
+            else:
+                if '/fl_attachment/' in url:
+                    url = url.replace('/fl_attachment/', '/')
+            
+            # Try to stream it back as a proxy download
+            if as_attachment:
+                proxied = _proxy_stream(url, filename)
+                if proxied is not None:
+                    return proxied
+            
             return HttpResponseRedirect(url)
+        except Exception:
+            # Fallback to Admin API resolution only if local URL generation fails
+            try:
+                info = resolve_cloudinary_resource(material.file.name)
+            except Http404:
+                raise
+            except Exception as exc:
+                raise Http404(f'Could not resolve material in Cloudinary: {exc}')
 
-        # View-only (no download): redirect to plain URL without fl_attachment
-        plain_url = info.get('secure_url') or info.get('url')
-        return HttpResponseRedirect(plain_url)
+            if as_attachment:
+                url = _get_download_url(info)
+                proxied = _proxy_stream(url, filename)
+                if proxied is not None:
+                    return proxied
+                return HttpResponseRedirect(url)
+
+            plain_url = info.get('secure_url') or info.get('url')
+            return HttpResponseRedirect(plain_url)
 
     # ── Local disk path ───────────────────────────────────────────────────────
     norm = _strip_media_prefix(material.file.name)
