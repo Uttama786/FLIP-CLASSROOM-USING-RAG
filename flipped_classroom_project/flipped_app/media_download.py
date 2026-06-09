@@ -150,9 +150,13 @@ def _proxy_stream(url: str, filename: str) -> HttpResponse | None:
         'content-type',
         mimetypes.guess_type(filename)[0] or 'application/octet-stream',
     )
-    # Enforce PDF MIME type regardless of what Cloudinary says
+    # Enforce PDF MIME type only if it is a real PDF (starts with %PDF)
+    is_real_pdf = resp.content.startswith(b'%PDF')
     if filename.lower().endswith('.pdf'):
-        content_type = 'application/pdf'
+        if is_real_pdf:
+            content_type = 'application/pdf'
+        else:
+            content_type = 'text/plain; charset=utf-8'
 
     response = HttpResponse(resp.content, content_type=content_type)
     safe = filename.replace('"', '_')
@@ -217,8 +221,21 @@ def serve_material_file(material, as_attachment: bool = True):
         else:
             raise Http404('Material file is unavailable on this server')
 
+    # Detect mock PDFs (which are text files starting with '==Start of PDF==')
+    try:
+        with local_path.open('rb') as f:
+            header = f.read(4)
+        is_real_pdf = header.startswith(b'%PDF')
+    except Exception:
+        is_real_pdf = True
+
+    response_content_type = None
+    if filename.lower().endswith('.pdf') and not is_real_pdf:
+        response_content_type = 'text/plain; charset=utf-8'
+
     return FileResponse(
         local_path.open('rb'),
         as_attachment=as_attachment,
         filename=filename,
+        content_type=response_content_type,
     )
