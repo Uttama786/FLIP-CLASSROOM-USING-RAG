@@ -36,6 +36,15 @@ def get_embedding_model():
     if not EMBEDDING_MODEL_NAME.startswith("sentence-transformers/"):
         model_candidates.append(f"sentence-transformers/{EMBEDDING_MODEL_NAME}")
 
+    # 1. First try loading from local cache (instant, avoids network checks and HF rate limits)
+    for model_name in model_candidates:
+        try:
+            _EMBEDDING_MODEL = SentenceTransformer(model_name, local_files_only=True)
+            return _EMBEDDING_MODEL
+        except Exception:
+            pass
+
+    # 2. Download from Hugging Face if not present locally
     last_error = None
     for model_name in model_candidates:
         for attempt in range(1, 4):
@@ -54,15 +63,7 @@ def get_embedding_model():
                     continue
                 break
 
-    # Last attempt: local cache only. Useful when network is flaky but model is cached.
-    try:
-        _EMBEDDING_MODEL = SentenceTransformer(model_candidates[0], local_files_only=True)
-        print(f"[Embedding] Loaded model from local cache: {model_candidates[0]}")
-        return _EMBEDDING_MODEL
-    except Exception as local_exc:
-        if last_error is None:
-            last_error = local_exc
-        raise RuntimeError(
-            "Unable to load embedding model from Hugging Face or local cache. "
-            "Check network access to huggingface.co, or pre-download the model and retry."
-        ) from last_error
+    raise RuntimeError(
+        "Unable to load embedding model from Hugging Face or local cache. "
+        "Check network access to huggingface.co, or pre-download the model and retry."
+    ) from last_error
