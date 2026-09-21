@@ -132,11 +132,24 @@ def login_view(request):
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
-        user = authenticate(request, username=username, password=password)
+        try:
+            user = authenticate(request, username=username, password=password)
+        except Exception:
+            # If the database connection was closed or dropped by the host,
+            # close Django's cached connection and retry authentication once.
+            from django.db import connection
+            connection.close()
+            user = authenticate(request, username=username, password=password)
+
         if user:
             login(request, user)
             # Clear previous chatbot history so every login starts fresh
-            ChatMessage.objects.filter(student=user).delete()
+            try:
+                ChatMessage.objects.filter(student=user).delete()
+            except Exception:
+                from django.db import connection
+                connection.close()
+                ChatMessage.objects.filter(student=user).delete()
             return redirect('dashboard')
         else:
             messages.error(request, 'Invalid username or password.')

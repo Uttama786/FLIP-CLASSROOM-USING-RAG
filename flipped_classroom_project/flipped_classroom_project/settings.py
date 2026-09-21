@@ -137,16 +137,28 @@ if _db_url:
     import dj_database_url
     DATABASES['default'] = dj_database_url.config(
         default=_db_url,
-        conn_max_age=600,
+        conn_max_age=60,
+        conn_health_checks=True,
         ssl_require=not DEBUG,
     )
-    # Add connection retry logic for Render cold starts
-    # When Render deploys, the DB may not be immediately available
-    DATABASES['default']['CONN_MAX_AGE'] = 600
-    DATABASES['default']['OPTIONS'] = {
+    # Enable persistent connection health checks (Django 4.1+)
+    # This automatically tests and transparently reconnects dropped/idle SSL connections
+    DATABASES['default']['CONN_MAX_AGE'] = 60
+    DATABASES['default']['CONN_HEALTH_CHECKS'] = True
+    
+    # TCP Keepalives & SSL configuration to prevent cloud proxies / firewalls
+    # from prematurely dropping idle connections on Render
+    db_options = DATABASES['default'].get('OPTIONS', {})
+    db_options.update({
         'connect_timeout': 10,
-        **({"sslmode": "require"} if not DEBUG else {}),
-    }
+        'keepalives': 1,
+        'keepalives_idle': 30,
+        'keepalives_interval': 10,
+        'keepalives_count': 5,
+    })
+    if not DEBUG:
+        db_options['sslmode'] = 'require'
+    DATABASES['default']['OPTIONS'] = db_options
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
