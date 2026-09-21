@@ -13,7 +13,7 @@ import urllib.parse
 from typing import List, Optional, Generator
 from .retriever import get_context
 
-DEFAULT_PRIMARY_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+DEFAULT_PRIMARY_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
 _ACTIVE_MODELS_CACHE = []
 MAX_CONTEXT_CHARS = 4000   # increased for better answer quality
 logger = logging.getLogger(__name__)
@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 def _get_candidate_models(client):
     """
     Return candidate model IDs in priority order.
+    Prioritizes fast low-latency models (gpt-oss-20b / qwen) for instant replies.
     Dynamically queries client.models.list() from Groq so decommissioned models
     are never called.
     """
@@ -37,8 +38,9 @@ def _get_candidate_models(client):
 
     preferred = [
         os.environ.get("GROQ_MODEL", ""),
-        "openai/gpt-oss-120b",
-        "openai/gpt-oss-20b",
+        "openai/gpt-oss-20b",          # Ultra-fast (~1000 tokens/sec, near-instant first token)
+        "qwen/qwen3.8-27b",            # Fast conversational model
+        "openai/gpt-oss-120b",         # Larger reasoning model
         "deepseek-r1-distill-llama-70b",
         "deepseek-r1-distill-qwen-32b",
         "qwen/qwen3.6-27b",
@@ -59,10 +61,10 @@ def _get_candidate_models(client):
     if not candidates:
         candidates = [
             DEFAULT_PRIMARY_MODEL,
-            "openai/gpt-oss-120b",
             "openai/gpt-oss-20b",
+            "qwen/qwen3.8-27b",
+            "openai/gpt-oss-120b",
             "deepseek-r1-distill-llama-70b",
-            "qwen/qwen3.6-27b",
         ]
     return list(dict.fromkeys(candidates))
 
@@ -150,6 +152,14 @@ def _condense_query(
     so that it can be searched effectively in FAISS.
     """
     if not chat_history:
+        return user_query
+
+    # Fast path: if query is already standalone (5+ words and no ambiguous pronouns),
+    # skip extra LLM condensing call to save 1.5 - 2.5 seconds of response latency
+    words = user_query.strip().split()
+    query_lower_words = set(user_query.lower().split())
+    vague_pronouns = {"it", "its", "this", "that", "these", "those", "they", "them", "he", "she"}
+    if len(words) >= 5 and not (query_lower_words & vague_pronouns):
         return user_query
 
     # Filter chat history to actual user/assistant conversational turns
