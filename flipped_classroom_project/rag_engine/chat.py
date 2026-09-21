@@ -13,22 +13,65 @@ import urllib.parse
 from typing import List, Optional, Generator
 from .retriever import get_context
 
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-FALLBACK_MODELS = list(dict.fromkeys([
-    GROQ_MODEL,
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768",
-    "gemma2-9b-it",
-]))
+DEFAULT_PRIMARY_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+_ACTIVE_MODELS_CACHE = []
 MAX_CONTEXT_CHARS = 4000   # increased for better answer quality
 logger = logging.getLogger(__name__)
 
 
+def _get_candidate_models(client):
+    """
+    Return candidate model IDs in priority order.
+    Dynamically queries client.models.list() from Groq so decommissioned models
+    are never called.
+    """
+    global _ACTIVE_MODELS_CACHE
+    if not _ACTIVE_MODELS_CACHE and client is not None:
+        try:
+            live_models = [m.id for m in client.models.list().data if hasattr(m, 'id')]
+            logger.info("Live Groq models discovered: %s", live_models)
+            _ACTIVE_MODELS_CACHE = live_models
+        except Exception as e:
+            logger.warning("Could not fetch models list from Groq: %s", e)
+            _ACTIVE_MODELS_CACHE = []
+
+    preferred = [
+        os.environ.get("GROQ_MODEL", ""),
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "deepseek-r1-distill-llama-70b",
+        "deepseek-r1-distill-qwen-32b",
+        "qwen/qwen3.6-27b",
+        "llama-3.3-70b-versatile",
+    ]
+    candidates = []
+    for p in preferred:
+        if p and p in _ACTIVE_MODELS_CACHE and p not in candidates:
+            candidates.append(p)
+
+    # If none of the preferred models were found in live list, use all text-generation models from live_models
+    if not candidates and _ACTIVE_MODELS_CACHE:
+        for m in _ACTIVE_MODELS_CACHE:
+            if not any(x in m.lower() for x in ["whisper", "guard", "embed", "moderation", "vision"]):
+                candidates.append(m)
+
+    # Final fallback if dynamic discovery didn't get results
+    if not candidates:
+        candidates = [
+            DEFAULT_PRIMARY_MODEL,
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "deepseek-r1-distill-llama-70b",
+            "qwen/qwen3.6-27b",
+        ]
+    return list(dict.fromkeys(candidates))
+
+
 def _call_groq_stream(client, messages, max_tokens=800, temperature=0.3):
     """Attempt streaming completion with fallback across available Groq models."""
+    candidates = _get_candidate_models(client)
     last_err = None
-    for model in FALLBACK_MODELS:
+    for model in candidates:
         try:
             stream = client.chat.completions.create(
                 model=model,
@@ -46,8 +89,9 @@ def _call_groq_stream(client, messages, max_tokens=800, temperature=0.3):
 
 def _call_groq_sync(client, messages, max_tokens=1200, temperature=0.3):
     """Attempt non-streaming completion with fallback across available Groq models."""
+    candidates = _get_candidate_models(client)
     last_err = None
-    for model in FALLBACK_MODELS:
+    for model in candidates:
         try:
             response = client.chat.completions.create(
                 model=model,
