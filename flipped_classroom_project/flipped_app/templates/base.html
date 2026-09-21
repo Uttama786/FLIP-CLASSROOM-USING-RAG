@@ -1006,6 +1006,7 @@
   /* ── source cards ── */
   function addSourceCards(wrap, sources) {
     if (!sources || sources.length === 0) return;
+    if (wrap.querySelector('.chat-source-cards')) return; // Prevent duplicate rows
     const row = document.createElement('div');
     row.className = 'chat-source-cards';
     let knowledgeIdx = 0;
@@ -1107,14 +1108,24 @@
      Dynamically scales speed to match fast token streaming seamlessly.
   ── */
   function makeTypewriter(textDiv, onFinish) {
-    let target    = ''; // full raw text accumulated from server
-    let displayed = 0;  // how many chars are currently rendered
-    let isDone    = false;
-    let rafId     = null;
+    let target      = ''; // full raw text accumulated from server
+    let displayed   = 0;  // how many chars are currently rendered
+    let isDone      = false;
+    let hasError    = false;
+    let finishFired = false;
+    let rafId       = null;
     let lastRenderTime = 0;
+
+    function fireFinish() {
+      if (finishFired) return;
+      finishFired = true;
+      if (onFinish) onFinish();
+    }
 
     function tick(now) {
       rafId = null;
+      if (hasError) return;
+
       const remaining = target.length - displayed;
 
       if (remaining > 0) {
@@ -1153,23 +1164,27 @@
         });
       }
       scrollBottom();
-      if (onFinish) onFinish();
+      fireFinish();
     }
 
     return {
       push(text) {
+        if (hasError) return;
         target += text;
         if (!rafId) rafId = requestAnimationFrame(tick);
       },
       finish() {
+        if (hasError) return;
         isDone = true;
         if (!rafId) rafId = requestAnimationFrame(tick);
       },
       abort(html) {
+        hasError = true;
         if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
         textDiv.classList.remove('chat-streaming');
         textDiv.innerHTML = html;
-        if (onFinish) onFinish();
+        scrollBottom();
+        fireFinish();
       }
     };
   }
@@ -1396,6 +1411,9 @@
             tw.push(payload.text);
           } else if (payload.type === 'related') {
             relatedQs = payload.questions || [];
+            if (!wrap.querySelector('.chat-related')) {
+              addRelatedQuestions(wrap, relatedQs);
+            }
           } else if (payload.type === 'done') {
             tw.finish();
           } else if (payload.type === 'error') {

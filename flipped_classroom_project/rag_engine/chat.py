@@ -13,9 +13,53 @@ import urllib.parse
 from typing import List, Optional, Generator
 from .retriever import get_context
 
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+FALLBACK_MODELS = list(dict.fromkeys([
+    GROQ_MODEL,
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it",
+]))
 MAX_CONTEXT_CHARS = 4000   # increased for better answer quality
 logger = logging.getLogger(__name__)
+
+
+def _call_groq_stream(client, messages, max_tokens=800, temperature=0.3):
+    """Attempt streaming completion with fallback across available Groq models."""
+    last_err = None
+    for model in FALLBACK_MODELS:
+        try:
+            stream = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True,
+            )
+            return stream, model
+        except Exception as e:
+            logger.warning("Groq model '%s' failed: %s. Trying fallback model...", model, e)
+            last_err = e
+    raise last_err
+
+
+def _call_groq_sync(client, messages, max_tokens=1200, temperature=0.3):
+    """Attempt non-streaming completion with fallback across available Groq models."""
+    last_err = None
+    for model in FALLBACK_MODELS:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            return response, model
+        except Exception as e:
+            logger.warning("Groq model '%s' failed: %s. Trying fallback model...", model, e)
+            last_err = e
+    raise last_err
 
 
 def _is_web_search_enabled() -> bool:
@@ -92,8 +136,8 @@ def _condense_query(
     try:
         if client is None:
             client = _get_groq_client()
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
+        response, _ = _call_groq_sync(
+            client,
             messages=[
                 {"role": "system", "content": "You are a search query optimizer."},
                 {"role": "user", "content": condense_prompt},
@@ -120,12 +164,11 @@ You have TWO roles:
 1. **Academic Tutor** — assist with subject topics: Data Structures (DS), Python (PY), Web Development (WD), Computer Networks (CN), Data Science (DSC), and AI & Machine Learning (AIML).
 2. **Platform Guide** — help users understand and navigate the FlipLearn platform. Answer questions like "How do I upload a video?", "How do I submit an assignment?", "How do I take a quiz?", "What features does this platform have?", "How do I enroll in a subject?", etc.
 
-**STRICT TRUTHFULNESS & GROUNDING REQUIREMENT:**
-- You must answer the student's question **ONLY** using the provided context from the FlipLearn knowledge base.
-- Under **NO** circumstances should you generate false, unverified, or hallucinated answers.
-- If the provided context is empty ("No specific context found."), or if it does not contain the information required to accurately answer the question, or if the question is unrelated to the platform/subjects, you **MUST** reply with exactly this phrase:
+**ACCURACY & GROUNDING GUIDELINE:**
+- Answer the student's question accurately, using the provided FlipLearn knowledge base context as your primary reference.
+- When the student asks about CSE concepts (such as Machine Learning, Neural Networks, Backpropagation, Data Structures, Algorithms, Python, Computer Networks, etc.) or the FlipLearn platform, provide a thorough, structured, and comprehensive explanation.
+- Only if the question is completely non-academic, unrelated to Computer Science / Engineering, and no context exists in the knowledge base, respond with:
   `Your matched query is not found in our database.`
-- Do **NOT** try to be polite, explain why you cannot answer, or suggest search queries if the information is missing. Respond with *only* that exact string.
 
 
 **Multi-Language Programming Support:**
@@ -467,12 +510,11 @@ def stream_answer(
     # ── 4. Stream the final answer ───────────────────────────────────────────
     full_reply = ""
     try:
-        stream = client.chat.completions.create(
-            model=GROQ_MODEL,
+        stream, _ = _call_groq_stream(
+            client,
             messages=messages,
             max_tokens=800,
             temperature=0.3,
-            stream=True,
         )
         for chunk in stream:
             token = chunk.choices[0].delta.content or ""
@@ -482,8 +524,13 @@ def stream_answer(
 
     except Exception as e:
         logger.exception("RAG stream_answer failed: %s", e)
-        yield sse({"type": "error", "text": "Sorry, the chatbot is temporarily unavailable."})
-        full_reply = "Sorry, something went wrong while generating the response."
+        err_str = str(e)
+        if "api_key" in err_str.lower() or "authentication" in err_str.lower():
+            user_msg = "Groq API key is missing or invalid. Please check GROQ_API_KEY."
+        else:
+            user_msg = f"Sorry, could not generate a response: {err_str}"
+        yield sse({"type": "error", "text": user_msg})
+        return  # Stop stream immediately so done is not yielded after an error
 
     # ── 5. Yield done ────────────────────────────────────────────────────────
     yield sse({"type": "done", "full_reply": full_reply, "sources": [s["title"] for s in sources]})
@@ -505,8 +552,8 @@ def stream_answer(
                     ),
                 },
             ]
-            resp = client.chat.completions.create(
-                model=GROQ_MODEL,
+            resp, _ = _call_groq_sync(
+                client,
                 messages=rel_messages,
                 max_tokens=60,
                 temperature=0.6,
@@ -571,8 +618,8 @@ def ask(
     messages = build_prompt_messages(user_query, chunks, chat_history, lang_pref=lang_pref)
 
     try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
+        response, _ = _call_groq_sync(
+            client,
             messages=messages,
             max_tokens=1200,
             temperature=0.3,
@@ -582,7 +629,7 @@ def ask(
     except Exception as e:
         logger.exception("RAG ask failed: %s", e)
         return {
-            "reply": "Sorry, something went wrong while generating the response.",
+            "reply": f"Sorry, something went wrong while generating the response: {e}",
             "sources": [],
             "error": "internal_error",
         }
