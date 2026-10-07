@@ -688,72 +688,13 @@
       </div>
     </div>
 
-    <!-- Subject Filter + Language Selector -->
-    <div class="chat-subject-bar d-flex flex-wrap gap-2 align-items-center">
-      <div class="d-flex align-items-center gap-1">
-        <label class="chat-subject-label mb-0"><i class="bi bi-funnel me-1"></i>Subject:</label>
-        <select id="chatSubjectSelect" class="chat-subject-select">
-          <option value="">All Subjects</option>
-          <option value="DS">Data Structures</option>
-          <option value="PY">Python Programming</option>
-          <option value="WD">Web Development</option>
-          <option value="CN">Computer Networks</option>
-          <option value="DSC">Data Science</option>
-          <option value="AIML">AI &amp; ML</option>
-        </select>
-      </div>
-      <div class="d-flex align-items-center gap-1">
-        <label class="chat-subject-label mb-0"><i class="bi bi-code-slash me-1"></i>Code in:</label>
-        <select id="chatLangSelect" class="chat-subject-select">
-          <option value="">Auto</option>
-          <optgroup label="Popular">
-            <option value="Python">Python</option>
-            <option value="Java">Java</option>
-            <option value="C++">C++</option>
-            <option value="C">C</option>
-            <option value="JavaScript">JavaScript</option>
-            <option value="TypeScript">TypeScript</option>
-          </optgroup>
-          <optgroup label="More Languages">
-            <option value="Go">Go</option>
-            <option value="Rust">Rust</option>
-            <option value="Kotlin">Kotlin</option>
-            <option value="Swift">Swift</option>
-            <option value="PHP">PHP</option>
-            <option value="Ruby">Ruby</option>
-            <option value="SQL">SQL</option>
-            <option value="Bash">Bash / Shell</option>
-            <option value="R">R</option>
-          </optgroup>
-        </select>
-      </div>
-    </div>
-
     <!-- Messages -->
     <div id="chatMessages" class="chat-messages">
       <!-- Welcome block -->
       <div class="chat-welcome" id="chatWelcome">
         <div class="chat-welcome-icon"><i class="bi bi-robot"></i></div>
         <h5 class="chat-welcome-title">Hi {{ user.first_name|default:user.username }}, I'm FlipLearn AI</h5>
-        <p class="chat-welcome-sub">Ask me anything about your subjects or request code in <strong>any programming language</strong> — Python, Java, C++, JavaScript, Go, Rust and more.</p>
-        <div class="chat-suggestions" id="chatSuggestions">
-          <button class="chat-suggestion-chip" data-q="Explain AVL tree rotations with examples">AVL Tree Rotations</button>
-          <button class="chat-suggestion-chip" data-q="What is the difference between TCP and UDP?">TCP vs UDP</button>
-          <button class="chat-suggestion-chip" data-q="How does backpropagation work in neural networks?">Backpropagation</button>
-          <button class="chat-suggestion-chip" data-q="Implement a linked list in Java">Linked List in Java</button>
-          <button class="chat-suggestion-chip" data-q="Explain pointers and memory management in C++">Pointers in C++</button>
-          <button class="chat-suggestion-chip" data-q="Write a REST API handler in JavaScript (Node.js)">REST API in JS</button>
-          <button class="chat-suggestion-chip" data-q="Explain SQL JOIN types with examples">SQL JOINs</button>
-          <button class="chat-suggestion-chip" data-q="Goroutines and channels in Go">Goroutines in Go</button>
-          <button class="chat-suggestion-chip" data-q="Explain binary search tree operations">BST Operations</button>
-          <button class="chat-suggestion-chip" data-q="What is overfitting and how do you prevent it?">Overfitting</button>
-          <button class="chat-suggestion-chip" data-q="How does Python's GIL work?">Python GIL</button>
-          <button class="chat-suggestion-chip" data-q="Implement Dijkstra's algorithm in C++">Dijkstra in C++</button>
-          <button class="chat-suggestion-chip" data-q="What are the key components of a transformer model?">Transformers</button>
-          <button class="chat-suggestion-chip" data-q="Explain CSS Flexbox vs Grid">Flexbox vs Grid</button>
-          <button class="chat-suggestion-chip" data-q="Explain ownership and borrowing in Rust">Rust Ownership</button>
-          <button class="chat-suggestion-chip" data-q="TypeScript interfaces vs types">TypeScript Interfaces</button>
-        </div>
+        <p class="chat-welcome-sub">How can I help you today?</p>
       </div>
     </div>
 
@@ -839,8 +780,6 @@
   const sendBtn  = document.getElementById('chatSendBtn');
   const input    = document.getElementById('chatInput');
   const msgs     = document.getElementById('chatMessages');
-  const subjectSel = document.getElementById('chatSubjectSelect');
-  const langSel    = document.getElementById('chatLangSelect');
   const charCount  = document.getElementById('chatCharCount');
   const badge      = document.getElementById('chatUnreadBadge');
   const uploadBtn  = document.getElementById('chatUploadBtn');
@@ -863,6 +802,7 @@
     unread = 0;
     badge.classList.add('d-none');
     setTimeout(() => input.focus(), 350);
+    loadHistory();
     scrollBottom();
   }
   function closePanel() {
@@ -1379,7 +1319,7 @@
           'Content-Type': 'application/json',
           'X-CSRFToken': CSRF_TOKEN,
         },
-        body: JSON.stringify({ query, subject_code: subjectSel.value, lang_code: langSel ? langSel.value : '' }),
+        body: JSON.stringify({ query }),
       });
 
       if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
@@ -1433,30 +1373,35 @@
     }
   }
 
-  /* ── Load recent history on first open ── */
+  /* ── Load recent history on open ── */
   let historyLoaded = false;
+  function loadHistory() {
+    if (historyLoaded) return;
+    historyLoaded = true;
+    fetch('{% url "chat_history" %}')
+      .then(r => r.json())
+      .then(data => {
+        if (data.messages && data.messages.length > 0) {
+          const welcome = document.getElementById('chatWelcome');
+          if (welcome) welcome.style.display = 'none';
+          msgs.innerHTML = '';
+          data.messages.forEach(m => {
+            if (m.role === 'user') {
+              addUserQuery(m.content);
+            } else {
+              const { wrap, textDiv } = createAnswerBlock();
+              textDiv.innerHTML = renderMd(m.content);
+              const srcList = m.sources ? m.sources.split(',').map(s => ({ title: s.trim(), subject: '' })).filter(s => s.title) : [];
+              addSourceCards(wrap, srcList);
+            }
+          });
+          scrollBottom();
+        }
+      })
+      .catch(() => {});
+  }
   pip.addEventListener('click', () => {
-    if (isOpen && !historyLoaded) {
-      historyLoaded = true;
-      fetch('{% url "chat_history" %}')
-        .then(r => r.json())
-        .then(data => {
-          if (data.messages && data.messages.length > 1) {
-            msgs.innerHTML = '';
-            data.messages.forEach(m => {
-              if (m.role === 'user') {
-                addUserQuery(m.content);
-              } else {
-                const { wrap, textDiv } = createAnswerBlock();
-                textDiv.innerHTML = renderMd(m.content);
-                const srcList = m.sources ? m.sources.split(',').map(s => ({ title: s.trim(), subject: '' })).filter(s => s.title) : [];
-                addSourceCards(wrap, srcList);
-              }
-            });
-          }
-        })
-        .catch(() => {});
-    }
+    if (isOpen) loadHistory();
   });
 })();
 </script>

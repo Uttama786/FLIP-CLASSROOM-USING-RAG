@@ -167,38 +167,120 @@ def _proxy_stream(url: str, filename: str) -> HttpResponse | None:
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
+def _find_local_file(file_name: str) -> Path | None:
+    """
+    Locate the real file on disk within MEDIA_ROOT.
+    Handles:
+    - Repeated 'media/' and 'materials/' prefixes (e.g. media/materials/materials/materials/...)
+    - Missing extensions (.pdf, .txt, .docx, .md)
+    - Cloudinary appended random hashes (e.g. _ky5wj5_k6gzih_zsxi2q)
+    """
+    media_root = Path(settings.MEDIA_ROOT)
+    materials_dir = media_root / 'materials'
+
+    # Direct check first
+    p = media_root / file_name.replace('\\', '/').lstrip('/')
+    if p.is_file():
+        return p
+
+    # Strip repeated 'media/' and 'materials/' from path
+    clean = file_name.replace('\\', '/').lstrip('/')
+    while clean.startswith('media/'):
+        clean = clean[len('media/'):]
+    while clean.startswith('materials/'):
+        clean = clean[len('materials/'):]
+
+    for base_dir in (materials_dir, media_root):
+        cand = base_dir / clean
+        if cand.is_file():
+            return cand
+
+    raw_name = Path(clean).name
+    stem = re.sub(r'\.[a-zA-Z0-9]+$', '', raw_name)
+    extensions = ['.pdf', '.txt', '.docx', '.md', '']
+
+    # 1. Exact stem with common extensions
+    for ext in extensions:
+        cand = materials_dir / f"{stem}{ext}"
+        if cand.is_file():
+            return cand
+
+    # 2. Progressively strip random trailing hash tokens (e.g. _ky5wj5)
+    curr = stem
+    while '_' in curr:
+        curr = curr.rsplit('_', 1)[0]
+        for ext in extensions:
+            cand = materials_dir / f"{curr}{ext}"
+            if cand.is_file():
+                return cand
+
+    # 3. Fallback: match prefix in materials_dir
+    parts = stem.split('_')
+    prefix = '_'.join(parts[:2]) if len(parts) >= 2 else stem
+    matches = list(materials_dir.glob(f"{prefix}*"))
+    for m in matches:
+        if m.is_file():
+            return m
+
+    return None
+
+
 def serve_material_file(material, as_attachment: bool = True):
-    """Return an HTTP file response for a StudyMaterial instance (LOCAL DISK ONLY)."""
+    """Return an HTTP file response for a StudyMaterial instance."""
     if not material.file or not material.file.name:
         raise Http404('Material file not found')
 
-    filename = Path(material.file.name).name or f'{material.title[:80]}.pdf'
+    # ── 1. Check Local Disk First ─────────────────────────────────────────────
+    local_path = _find_local_file(material.file.name)
+    if local_path and local_path.is_file():
+        filename = local_path.name
 
-    # ── Local disk path ONLY ──────────────────────────────────────────────────
-    norm = _strip_media_prefix(material.file.name)
-    local_path = Path(settings.MEDIA_ROOT) / norm
-    if not local_path.is_file():
-        alt = Path(settings.MEDIA_ROOT) / 'materials' / filename
-        if alt.is_file():
-            local_path = alt
-        else:
-            raise Http404(f'Material file not found at {local_path} or {alt}')
+        # Detect mock PDFs (which are text files starting with '==Start of PDF==')
+        try:
+            with local_path.open('rb') as f:
+                header = f.read(4)
+            is_real_pdf = header.startswith(b'%PDF')
+        except Exception:
+            is_real_pdf = True
 
-    # Detect mock PDFs (which are text files starting with '==Start of PDF==')
-    try:
-        with local_path.open('rb') as f:
-            header = f.read(4)
-        is_real_pdf = header.startswith(b'%PDF')
-    except Exception:
-        is_real_pdf = True
+        response_content_type = None
+        if filename.lower().endswith('.pdf') and not is_real_pdf:
+            response_content_type = 'text/plain; charset=utf-8'
 
-    response_content_type = None
-    if filename.lower().endswith('.pdf') and not is_real_pdf:
-        response_content_type = 'text/plain; charset=utf-8'
+        return FileResponse(
+            local_path.open('rb'),
+            as_attachment=as_attachment,
+            filename=filename,
+            content_type=response_content_type,
+        )
 
-    return FileResponse(
-        local_path.open('rb'),
-        as_attachment=as_attachment,
-        filename=filename,
-        content_type=response_content_type,
-    )
+    # ── 2. Cloudinary Fallback ────────────────────────────────────────────────
+    if uses_cloudinary():
+        try:
+            url = getattr(material.file, 'url', None)
+            if url:
+                if as_attachment:
+                    url = _inject_fl_attachment(url)
+                download_name = Path(material.file.name).name or f'{material.title[:80]}.pdf'
+                proxied = _proxy_stream(url, download_name)
+                if proxied is not None:
+                    return proxied
+                return HttpResponseRedirect(url)
+        except Exception:
+            pass
+
+        try:
+            info = resolve_cloudinary_resource(material.file.name)
+            download_name = Path(material.file.name).name or f'{material.title[:80]}.pdf'
+            if as_attachment:
+                url = _get_download_url(info)
+                proxied = _proxy_stream(url, download_name)
+                if proxied is not None:
+                    return proxied
+                return HttpResponseRedirect(url)
+            plain_url = info.get('secure_url') or info.get('url')
+            return HttpResponseRedirect(plain_url)
+        except Exception:
+            pass
+
+    raise Http404(f'Material file not found for: {material.title}')

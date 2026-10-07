@@ -115,8 +115,6 @@ def register_view(request):
         if form.is_valid():
             user = form.save()
             login(request, user)
-            # No prior history for new accounts, but clear defensively
-            ChatMessage.objects.filter(student=user).delete()
             messages.success(request, f'Welcome {user.first_name}! Your account has been created.')
             return redirect('dashboard')
         else:
@@ -143,13 +141,6 @@ def login_view(request):
 
         if user:
             login(request, user)
-            # Clear previous chatbot history so every login starts fresh
-            try:
-                ChatMessage.objects.filter(student=user).delete()
-            except Exception:
-                from django.db import connection
-                connection.close()
-                ChatMessage.objects.filter(student=user).delete()
             return redirect('dashboard')
         else:
             messages.error(request, 'Invalid username or password.')

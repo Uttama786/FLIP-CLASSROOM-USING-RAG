@@ -127,7 +127,7 @@ class LoginViewTest(TestCase):
         response = self.client.get(reverse("login"))
         self.assertRedirects(response, reverse("dashboard"))
 
-    def test_login_clears_chat_history(self):
+    def test_login_maintains_chat_history(self):
         from flipped_app.models import ChatMessage
         ChatMessage.objects.create(student=self.user, role="user", content="old message")
         self.assertEqual(ChatMessage.objects.filter(student=self.user).count(), 1)
@@ -135,7 +135,7 @@ class LoginViewTest(TestCase):
             reverse("login"),
             data={"username": "login_stu", "password": "pass12345"},
         )
-        self.assertEqual(ChatMessage.objects.filter(student=self.user).count(), 0)
+        self.assertEqual(ChatMessage.objects.filter(student=self.user).count(), 1)
 
 
 # ──────────────────────────────────────────────────────────────

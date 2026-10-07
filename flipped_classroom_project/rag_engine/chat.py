@@ -162,8 +162,12 @@ def _condense_query(
     if len(words) >= 5 and not (query_lower_words & vague_pronouns):
         return user_query
 
-    # Filter chat history to actual user/assistant conversational turns
-    history_turns = [m for m in chat_history if m.get("role") in ("user", "assistant")]
+    # Filter chat history to actual user/assistant turns, ignoring failed searches to avoid anchoring
+    history_turns = [
+        m for m in chat_history
+        if m.get("role") in ("user", "assistant")
+        and "not found in our database" not in m.get("content", "").lower()
+    ]
     if not history_turns:
         return user_query
 
@@ -289,7 +293,7 @@ def build_prompt_messages(
     user_content = (
         f"Context from FlipLearn knowledge base:\n{context_str}\n\n---\n\n"
         f"Student Question: {user_query}{lang_instruction}\n\n"
-        "Answer based on the context above. Use markdown formatting."
+        "Answer the student's question clearly, thoroughly, and helpfully. If the course context contains relevant details, use and cite it. If the context does not contain the answer or no context is available, answer accurately using your computer science knowledge. Use markdown formatting."
     )
     messages.append({"role": "user", "content": user_content})
     return messages
@@ -507,7 +511,7 @@ def stream_answer(
     chunks = get_context(condensed_query, top_k=top_k, subject_filter=subject_code)
 
     # ── Deterministic Out-of-Domain / Low-Similarity Filter ──
-    MIN_SIMILARITY_THRESHOLD = 0.38
+    MIN_SIMILARITY_THRESHOLD = 0.35
     is_found = False
     if chunks:
         max_score = max(c.get("score", 0.0) for c in chunks)
@@ -650,7 +654,7 @@ def ask(
     chunks = get_context(condensed_query, top_k=top_k, subject_filter=subject_code)
 
     # ── Deterministic Out-of-Domain / Low-Similarity Filter ──
-    MIN_SIMILARITY_THRESHOLD = 0.38
+    MIN_SIMILARITY_THRESHOLD = 0.35
     is_found = False
     if chunks:
         max_score = max(c.get("score", 0.0) for c in chunks)
