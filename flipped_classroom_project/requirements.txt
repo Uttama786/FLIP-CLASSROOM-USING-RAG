@@ -15,6 +15,7 @@ PyMuPDF==1.27.1
 groq==1.0.0
 # torch must be installed from the PyTorch CPU-only wheel (see render.yaml buildCommand)
 torch==2.5.1
+transformers>=4.40.0,<4.49.0
 sentence-transformers==5.2.3
 faiss-cpu==1.13.2
 python-docx==1.2.0

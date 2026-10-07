@@ -9,7 +9,7 @@ services:
   - type: web
     name: fliplearn
     runtime: python
-    repo: https://github.com/Uttama786/classroom
+    repo: https://github.com/Uttama786/FLIP-CLASSROOM-USING-RAG
     plan: free
     region: oregon
     buildCommand: |
