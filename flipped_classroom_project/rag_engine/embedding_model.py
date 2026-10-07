@@ -28,6 +28,12 @@ def get_embedding_model():
     if _EMBEDDING_MODEL is not None:
         return _EMBEDDING_MODEL
 
+    try:
+        from flipped_app.torch_patch import patch_torch_compat
+        patch_torch_compat()
+    except Exception:
+        pass
+
     from sentence_transformers import SentenceTransformer
 
     model_candidates = []

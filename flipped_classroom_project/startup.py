@@ -15,6 +15,12 @@ from urllib.parse import urlparse
 # Ensure Django settings module is discoverable
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'flipped_classroom_project.settings')
 
+try:
+    from flipped_app.torch_patch import patch_torch_compat
+    patch_torch_compat()
+except Exception:
+    pass
+
 MAX_RETRIES = 30
 RETRY_INTERVAL = 2  # Increased from 1 to 2 seconds
 

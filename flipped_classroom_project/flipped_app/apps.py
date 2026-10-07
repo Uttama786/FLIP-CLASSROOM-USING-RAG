@@ -10,14 +10,13 @@ class FlippedAppConfig(AppConfig):
         Called once Django is fully loaded.
         Register real-time dataset signals and configure SQLite for concurrency.
         """
-        # ── Workaround for PyTorch float8_e8m0fnu compatibility bug in transformers ──
+        # ── Workaround for PyTorch compatibility bugs in transformers ─────────
         try:
-            import torch
-            if not hasattr(torch, "float8_e8m0fnu"):
-                setattr(torch, "float8_e8m0fnu", torch.float32)
-                print("[FlipLearn] Patched missing torch.float8_e8m0fnu for transformers compatibility")
-        except ImportError:
-            pass
+            from flipped_app.torch_patch import patch_torch_compat
+            patch_torch_compat()
+            print("[FlipLearn] Patched PyTorch compatibility for transformers ✓")
+        except Exception as e:
+            print(f"[FlipLearn] PyTorch patch skipped: {e}")
 
         # ── 1. SQLite WAL mode (prevents "database is locked" errors) ────────
         # WAL allows concurrent reads while background ML threads write,

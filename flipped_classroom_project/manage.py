@@ -8,6 +8,11 @@ def main():
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'flipped_classroom_project.settings')
     try:
+        from flipped_app.torch_patch import patch_torch_compat
+        patch_torch_compat()
+    except Exception:
+        pass
+    try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
         raise ImportError(
