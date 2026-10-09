@@ -2010,7 +2010,7 @@ main { animation: pageIn 0.45s cubic-bezier(0.22,1,0.36,1); }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 110px;
+  max-width: 220px;
 }
 .chat-source-subject {
   font-size: 0.65rem;

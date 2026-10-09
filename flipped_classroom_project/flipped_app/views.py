@@ -1198,6 +1198,7 @@ def chat_ask_view(request):
             chat_history=chat_history,
             top_k=5,
             lang_pref=lang_code,
+            user=request.user,
         )
     except Exception as e:
         logger.exception('chat_ask_view failed: %s', e)
@@ -1303,6 +1304,7 @@ def chat_stream_view(request):
                 chat_history=chat_history,
                 top_k=3,
                 lang_pref=lang_code,
+                user=request.user,
             ):
                 # event_str is already "data: {...}\n\n"
                 yield event_str

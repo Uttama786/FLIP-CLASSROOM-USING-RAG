@@ -694,7 +694,24 @@
       <div class="chat-welcome" id="chatWelcome">
         <div class="chat-welcome-icon"><i class="bi bi-robot"></i></div>
         <h5 class="chat-welcome-title">Hi {{ user.first_name|default:user.username }}, I'm FlipLearn AI</h5>
-        <p class="chat-welcome-sub">How can I help you today?</p>
+        <p class="chat-welcome-sub">Academic Intelligence & Risk Prediction Assistant</p>
+        <div class="chat-suggestions" id="chatSuggestions">
+          {% if user.is_staff or user.teacher_profile %}
+          <button class="chat-suggestion-chip" data-q="Show me the details of USN 2024IT0001">📊 Student 2024IT0001</button>
+          <button class="chat-suggestion-chip" data-q="Show all high-risk students">🔴 High-Risk Students</button>
+          <button class="chat-suggestion-chip" data-q="Which students require immediate mentoring?">📋 Mentoring Required</button>
+          <button class="chat-suggestion-chip" data-q="Show students with attendance below 75%">⚠️ Attendance &lt; 75%</button>
+          <button class="chat-suggestion-chip" data-q="Show the top-performing students">🌟 Top Performers</button>
+          {% elif user.student_profile %}
+          <button class="chat-suggestion-chip" data-q="How am I performing?">📊 My Academic Analysis</button>
+          <button class="chat-suggestion-chip" data-q="What is my attendance?">📅 My Attendance</button>
+          <button class="chat-suggestion-chip" data-q="What is my predicted final score?">🎯 My Predicted Score</button>
+          <button class="chat-suggestion-chip" data-q="Which career areas are suitable for this student?">🚀 Career Recommendations</button>
+          {% else %}
+          <button class="chat-suggestion-chip" data-q="What is a Binary Search Tree?">🌲 Binary Search Trees</button>
+          <button class="chat-suggestion-chip" data-q="Explain Dijkstra's Algorithm">⚡ Dijkstra's Algorithm</button>
+          {% endif %}
+        </div>
       </div>
     </div>
 
@@ -878,8 +895,11 @@
 
   /* ── suggestion chips ── */
   function wireChips(root) {
-    root.querySelectorAll('.chat-suggestion-chip, .chat-related-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
+    (root || document).querySelectorAll('.chat-suggestion-chip:not([data-wired]), .chat-related-chip:not([data-wired])').forEach(btn => {
+      btn.setAttribute('data-wired', 'true');
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (isLoading) return; // Prevent duplicate requests while loading
         const q = btn.getAttribute('data-q') || btn.textContent.trim();
         input.value = q;
         charCount.textContent = q.length;
@@ -1132,6 +1152,7 @@
   /* ── related question chips ── */
   function addRelatedQuestions(wrap, questions) {
     if (!questions || questions.length === 0) return;
+    if (wrap.querySelector('.chat-related')) return; // Prevent duplicate related question blocks
     const sec = document.createElement('div');
     sec.className = 'chat-related';
     sec.innerHTML = '<div class="chat-related-label"><i class="bi bi-arrow-right-circle me-1"></i>Related questions</div>';
@@ -1146,7 +1167,7 @@
     });
     sec.appendChild(row);
     wrap.appendChild(sec);
-    wireChips(wrap);
+    wireChips(sec);
     scrollBottom();
   }
 
@@ -1351,9 +1372,7 @@
             tw.push(payload.text);
           } else if (payload.type === 'related') {
             relatedQs = payload.questions || [];
-            if (!wrap.querySelector('.chat-related')) {
-              addRelatedQuestions(wrap, relatedQs);
-            }
+            // Defer rendering until typewriter finishes so source cards and related questions appear in correct order without duplicates
           } else if (payload.type === 'done') {
             tw.finish();
           } else if (payload.type === 'error') {

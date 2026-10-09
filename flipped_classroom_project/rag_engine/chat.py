@@ -465,6 +465,7 @@ def stream_answer(
     chat_history: Optional[List[dict]] = None,
     top_k: int = 3,          # 3 chunks is enough and faster than 5
     lang_pref: Optional[str] = None,
+    user: Optional[object] = None,
 ) -> Generator[str, None, None]:
     """
     Generator that yields SSE-formatted events:
@@ -476,6 +477,37 @@ def stream_answer(
     """
     def sse(payload: dict) -> str:
         return f"data: {json.dumps(payload)}\n\n"
+
+    # ── Academic Intelligence & Risk Prediction Check ────────
+    try:
+        from ml_model.academic_intelligence import handle_academic_query
+        academic_result = handle_academic_query(user_query=user_query, user=user, chat_history=chat_history)
+        if academic_result.get('handled'):
+            full_reply = academic_result['reply']
+            sources_raw = academic_result.get('sources', [])
+            sources = [{"title": s, "subject": "Academic Intelligence", "source_type": "dataset", "snippet": "Official Student Academic Performance & Risk Dataset (dataset.csv)"} for s in sources_raw]
+            yield sse({"type": "sources", "sources": sources})
+
+            # Stream tokens in chunks for smooth, fast UX
+            chunk_size = 24
+            for i in range(0, len(full_reply), chunk_size):
+                yield sse({"type": "token", "text": full_reply[i:i+chunk_size]})
+
+            yield sse({"type": "done", "full_reply": full_reply, "sources": [s["title"] for s in sources]})
+
+            # Related follow-up suggestions
+            related_qs = academic_result.get('related_questions')
+            if related_qs:
+                yield sse({"type": "related", "questions": related_qs})
+            elif "Access Denied" in full_reply:
+                yield sse({"type": "related", "questions": ["How am I performing?", "What is my attendance?", "What is my predicted final score?"]})
+            elif "STUDENT COHORT REPORT" in full_reply or "STUDENTS" in full_reply:
+                yield sse({"type": "related", "questions": ["Which students require immediate mentoring?", "Show students with attendance below 75%", "Show the top-performing students"]})
+            else:
+                yield sse({"type": "related", "questions": ["Is this student at risk?", "What intervention should I provide?", "Which career areas are suitable for this student?"]})
+            return
+    except Exception as e:
+        logger.exception("Academic intelligence stream_answer error: %s", e)
 
     # ── Shared Groq client (created once, reused throughout) ────────────────
     client = _get_groq_client()
@@ -637,8 +669,22 @@ def ask(
     chat_history: Optional[List[dict]] = None,
     top_k: int = 5,
     lang_pref: Optional[str] = None,
+    user: Optional[object] = None,
 ) -> dict:
     """Non-streaming fallback — returns full reply at once."""
+    # ── Academic Intelligence & Risk Prediction Check ────────
+    try:
+        from ml_model.academic_intelligence import handle_academic_query
+        academic_result = handle_academic_query(user_query=user_query, user=user, chat_history=chat_history)
+        if academic_result.get('handled'):
+            return {
+                "reply": academic_result['reply'],
+                "sources": academic_result.get('sources', []),
+                "error": academic_result.get('error'),
+            }
+    except Exception as e:
+        logger.exception("Academic intelligence ask check error: %s", e)
+
     try:
         client = _get_groq_client()
     except Exception as e:
